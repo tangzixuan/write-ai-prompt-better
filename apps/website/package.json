@@ -1,0 +1,19 @@
+{
+  "name": "@write-ai-prompt-better/website",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@write-ai-prompt-better/ui": "workspace:*",
+    "@write-ai-prompt-better/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

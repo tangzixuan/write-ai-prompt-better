@@ -1,0 +1,50 @@
+name: Build VSCode Extension
+
+# Triggered when code is merged into main, plus a manual dispatch option.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Package VSIX
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile extension (TypeScript → out/)
+        run: pnpm --filter write-ai-prompt-better run build
+
+      - name: Package VSIX
+        working-directory: apps/vscode-extension
+        # --no-dependencies: the extension has no runtime dependencies, so skip
+        #   dependency resolution (avoids issues with pnpm's symlinked node_modules).
+        # --allow-missing-repository: package.json has no `repository` field yet.
+        run: npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: write-ai-prompt-better-vsix
+          path: apps/vscode-extension/*.vsix
+          if-no-files-found: error
+          retention-days: 90
