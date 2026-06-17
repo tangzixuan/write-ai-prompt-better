@@ -1,0 +1,130 @@
+{
+  "name": "write-ai-prompt-better",
+  "displayName": "write-ai-prompt-better",
+  "description": "Streamlines prompt writing for Claude Code, GitHub Copilot, Cursor, Cline, Windsurf, and other AI coding assistants.",
+  "version": "0.1.0",
+  "publisher": "write-ai-prompt-better",
+  "license": "MIT",
+  "private": true,
+  "main": "./out/extension.js",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "writeBetterPrompt",
+          "title": "write-ai-prompt-better",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "writeBetterPrompt": [
+        {
+          "type": "webview",
+          "id": "writeBetterPrompt.panel",
+          "name": "write-ai-prompt-better",
+          "icon": "media/icon.svg",
+          "contextualTitle": "write-ai-prompt-better"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "writeBetterPrompt.openPanel",
+        "title": "Open Panel",
+        "category": "write-ai-prompt-better"
+      },
+      {
+        "command": "writeBetterPrompt.openEditor",
+        "title": "Open Editor",
+        "category": "write-ai-prompt-better"
+      },
+      {
+        "command": "writeBetterPrompt.clearAll",
+        "title": "Clear All",
+        "category": "write-ai-prompt-better"
+      },
+      {
+        "command": "writeBetterPrompt.addFileContent",
+        "title": "Add to write-ai-prompt-better",
+        "enablement": "editorHasSelection"
+      },
+      {
+        "command": "writeBetterPrompt.addFileToContext",
+        "title": "Add to write-ai-prompt-better"
+      },
+      {
+        "command": "writeBetterPrompt.addTerminalContent",
+        "title": "Add to write-ai-prompt-better"
+      },
+      {
+        "command": "writeBetterPrompt.addPathToContext",
+        "title": "Add to write-ai-prompt-better"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "writeBetterPrompt.addFileContent",
+          "when": "editorHasSelection",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "writeBetterPrompt.addFileToContext",
+          "group": "navigation@1"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "writeBetterPrompt.addTerminalContent",
+          "group": "navigation@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "writeBetterPrompt.addPathToContext",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "write-ai-prompt-better",
+      "properties": {
+        "writeBetterPrompt.presets": {
+          "type": "array",
+          "default": [
+            { "label": "调整样式", "value": "帮我调整样式：" },
+            { "label": "排查问题", "value": "帮我排查问题：" },
+            { "label": "实现功能", "value": "帮我实现功能：" },
+            { "label": "完善功能", "value": "帮我完善功能：" },
+            { "label": "代码审查", "value": "帮我做代码审查：" },
+            { "label": "添加注释", "value": "帮我添加注释：" }
+          ],
+          "description": "Initial requirement preset list (seed only — UI-managed presets take precedence). Each entry has a `label` (shown in the dropdown) and a `value` (the text appended to the requirements textarea)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build": "tsc -p ./",
+    "dev": "tsc -watch -p ./",
+    "typecheck": "tsc -p ./ --noEmit",
+    "lint": "tsc -p ./ --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.7.0"
+  }
+}
