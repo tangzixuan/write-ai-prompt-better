@@ -431,6 +431,7 @@ ${this._getBody(isEditor)}
 
     return `<div class="app">
 ${toolbar}
+  <div class="main-content">
   <section class="section">
     <div class="section-title">${t('sectionBackground')}</div>
     <div id="context-list"></div>
@@ -490,6 +491,7 @@ ${toolbar}
     <pre id="preview-content"></pre>
   </div>
 
+  </div>
   <section class="section history-section">
     <div id="history-header" class="section-title history-header">
       <span id="history-chevron" class="chevron">›</span>
@@ -506,10 +508,11 @@ ${toolbar}
     return `*{box-sizing:border-box}
 html,body{height:100%;margin:0;padding:0}
 body{font-family:var(--vscode-font-family,sans-serif);font-size:var(--vscode-font-size,13px);color:var(--vscode-foreground,#333);background-color:var(--vscode-sideBar-background,transparent)}
-.app{display:flex;flex-direction:column;gap:10px;padding:8px 10px 24px;height:100%;overflow-y:auto}
+.app{display:flex;flex-direction:column;gap:6px;padding:0;height:100%}
 .hidden{display:none !important}
-.toolbar{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:8px 10px 0}
 .editor-toolbar{padding-bottom:6px;border-bottom:1px solid var(--vscode-panel-border,rgba(128,128,128,.2))}
+.main-content{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:10px;padding:0 10px 24px}
 .editor-title{font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;overflow:hidden}
 .editor-badge{font-size:10px;font-weight:400;padding:1px 6px;border-radius:8px;background:var(--vscode-badge-background,#4d4d4d);color:var(--vscode-badge-foreground,#fff)}
 .editor-actions{display:flex;gap:6px}
@@ -575,11 +578,11 @@ textarea:focus{border-color:var(--vscode-focusBorder,#007fd4)}
 #req-textarea{min-height:110px}
 #val-textarea{min-height:56px}
 .action-bar{display:flex;gap:6px;justify-content:flex-end;padding-top:4px}
-.preview-wrap{border:1px solid var(--vscode-input-border,rgba(128,128,128,.3));border-radius:4px;overflow:hidden}
-.preview-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--vscode-input-border,rgba(128,128,128,.2));font-size:12px;font-weight:600}
-#preview-content{margin:0;padding:8px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto;color:var(--vscode-descriptionForeground,#aaa)}
+.preview-wrap{border:1px solid var(--vscode-input-border,rgba(128,128,128,.3));border-radius:4px;overflow:hidden;display:flex;flex-direction:column;max-height:300px}
+.preview-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--vscode-input-border,rgba(128,128,128,.2));font-size:12px;font-weight:600;flex-shrink:0}
+#preview-content{margin:0;padding:8px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;white-space:pre-wrap;word-break:break-word;flex:1;overflow:auto;min-height:0;color:var(--vscode-descriptionForeground,#aaa)}
 .close-btn{padding:0 6px;background:transparent;border:none;color:var(--vscode-foreground)}
-.history-section{margin-top:auto}
+.history-section{flex-shrink:0;padding:0 10px 12px}
 .history-header{cursor:pointer;user-select:none;padding:6px 4px;border-top:1px solid var(--vscode-input-border,rgba(128,128,128,.2))}
 .chevron{display:inline-block;transition:transform .15s ease;font-size:12px}
 .chevron.rotated{transform:rotate(90deg)}
@@ -862,7 +865,7 @@ function renderHistory(){
   list.innerHTML = html;
 }
 
-function openPreview(){ previewOpen=true; $('preview-wrap').classList.remove('hidden'); $('preview-btn').textContent=MSG.closePreview; refreshPreview(); }
+function openPreview(){ previewOpen=true; $('preview-wrap').classList.remove('hidden'); $('preview-btn').textContent=MSG.closePreview; refreshPreview(); setTimeout(function(){ $('preview-wrap').scrollIntoView({behavior:'smooth',block:'nearest'}); }, 60); }
 function closePreview(){ previewOpen=false; $('preview-wrap').classList.add('hidden'); $('preview-btn').textContent=MSG.previewBtn; }
 function refreshPreview(){ if (!previewOpen) return; var p = buildPrompt(); $('preview-content').textContent = p || MSG.emptyPrompt; }
 
