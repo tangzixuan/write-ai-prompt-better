@@ -5,6 +5,9 @@ set -e
 # Runs every time the container starts (including restarts).
 # Checks .env for a valid DeepSeek API key and auto-configures.
 
+# ── Ensure pnpm and global npm packages are in PATH ────────────
+export PATH="$PATH:$PNPM_HOME:/home/node/.npm-global/bin"
+
 WORKSPACE_DIR="$(pwd)"
 
 # ── Load .env if it exists ────────────────────────────────────

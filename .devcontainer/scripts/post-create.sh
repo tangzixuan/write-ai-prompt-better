@@ -3,6 +3,9 @@ set -e
 
 echo "🔧 Running post-create setup..."
 
+# ── Ensure pnpm and global npm packages are in PATH ────────────
+export PATH="$PATH:$PNPM_HOME:/home/node/.npm-global/bin"
+
 # ── Build the project ─────────────────────────────────────────
 echo "🏗️  Building project..."
 pnpm build
