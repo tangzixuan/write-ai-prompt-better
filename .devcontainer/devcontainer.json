@@ -1,0 +1,52 @@
+{
+  "name": "write-ai-prompt-better",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bookworm",
+
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "amodio.tsl-problem-matcher",
+        "eamodio.gitlens",
+        "tangzixuan.write-ai-prompt-better"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "files.exclude": {
+          "**/.git": true,
+          "**/node_modules": true,
+          "**/out": true
+        }
+      }
+    }
+  },
+
+  "containerEnv": {
+    "PNPM_HOME": "/home/node/.local/share/pnpm",
+    "PATH": "${containerEnv:PATH}:/home/node/.local/share/pnpm:/home/node/.npm-global/bin"
+  },
+
+  "remoteEnv": {
+    "DEEPSEEK_API_KEY": "${localEnv:DEEPSEEK_API_KEY}"
+  },
+
+  "onCreateCommand": "bash .devcontainer/scripts/on-create.sh",
+
+  "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
+
+  "postStartCommand": "bash .devcontainer/scripts/post-start.sh",
+
+  "remoteUser": "node",
+
+  "mounts": [
+    "source=${localEnv:HOME}/.gitconfig,target=/home/node/.gitconfig,type=bind,consistency=cached"
+  ]
+}
