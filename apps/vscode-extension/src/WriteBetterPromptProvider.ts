@@ -60,6 +60,8 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
   private _history: HistoryItem[] = [];
   private _presets: PresetPrompt[] = [];
   private _validationPresets: PresetPrompt[] = [];
+  /** Cached skill scan results. Lazily populated; force-refreshed on explicit requests. */
+  private _skills: SkillItem[] = [];
 
   private readonly _disposables: vscode.Disposable[] = [];
 
@@ -158,19 +160,21 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
     }
   }
 
-  /** Send the full current state to a freshly opened view. */
-  private _initWebview(post: PostFn): void {
+  /** Send the full current state (including auto-scanned skills) to a freshly opened view. */
+  private async _initWebview(post: PostFn): Promise<void> {
     post({ type: 'presetsData', presets: this._presets });
     post({ type: 'validationPresetsData', presets: this._validationPresets });
     post({ type: 'historyData', history: this._history });
     post({ type: 'syncContextItems', items: this._contextItems });
+    const skills = await this._scanSkills();
+    post({ type: 'skillsData', skills });
   }
 
   /** Shared message handler used by both the sidebar view and editor panels. */
   private async _handleMessage(message: WebviewMessage, post: PostFn): Promise<void> {
     switch (message.type) {
       case 'ready':
-        this._initWebview(post);
+        await this._initWebview(post);
         break;
 
       case 'copyToClipboard':
@@ -208,7 +212,7 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
         break;
 
       case 'getSkills': {
-        const skills = await this._scanSkills();
+        const skills = await this._scanSkills(/* force */ true);
         post({ type: 'skillsData', skills });
         break;
       }
@@ -260,8 +264,9 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
 
   // ---------------------------------------------------------------- skill scan
 
-  /** Discover AI-assistant skills across global and workspace locations. */
-  private async _scanSkills(): Promise<SkillItem[]> {
+  /** Discover AI-assistant skills across global and workspace locations. Results are cached; pass `force` to re-scan. */
+  private async _scanSkills(force = false): Promise<SkillItem[]> {
+    if (!force && this._skills.length > 0) return this._skills;
     const skills: SkillItem[] = [];
     const home = os.homedir();
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -288,6 +293,7 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
       );
     }
 
+    this._skills = skills;
     return skills;
   }
 
@@ -300,7 +306,8 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
       return;
     }
     for (const [name, type] of entries) {
-      if (type !== vscode.FileType.Directory) {
+      // Use bitwise AND to also match symlinked directories (e.g. Claude Code skill symlinks).
+      if (!(type & vscode.FileType.Directory)) {
         continue;
       }
       await this._readSingle(path.join(dir, name, 'SKILL.md'), agent, name, skills);
@@ -316,7 +323,8 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
       return;
     }
     for (const [name, type] of entries) {
-      if (type !== vscode.FileType.File || !name.endsWith(ext)) {
+      // Use bitwise AND to also match symlinked files.
+      if (!(type & vscode.FileType.File) || !name.endsWith(ext)) {
         continue;
       }
       await this._readSingle(path.join(dir, name), agent, name.slice(0, -ext.length), skills);

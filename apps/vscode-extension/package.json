@@ -3,9 +3,13 @@
   "displayName": "write-ai-prompt-better",
   "description": "Streamlines prompt writing for Claude Code, GitHub Copilot, Cursor, Cline, Windsurf, and other AI coding assistants.",
   "version": "0.1.0",
-  "publisher": "write-ai-prompt-better",
+  "publisher": "tangzixuan",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tangzixuan/write-ai-prompt-better.git"
+  },
   "main": "./out/extension.js",
   "engines": {
     "vscode": "^1.85.0"
@@ -53,20 +57,20 @@
       },
       {
         "command": "writeBetterPrompt.addFileContent",
-        "title": "Add to write-ai-prompt-better",
+        "title": "Add selected code to write-ai-prompt-better",
         "enablement": "editorHasSelection"
       },
       {
         "command": "writeBetterPrompt.addFileToContext",
-        "title": "Add to write-ai-prompt-better"
+        "title": "Add file content to write-ai-prompt-better"
       },
       {
         "command": "writeBetterPrompt.addTerminalContent",
-        "title": "Add to write-ai-prompt-better"
+        "title": "Add terminal output to write-ai-prompt-better"
       },
       {
         "command": "writeBetterPrompt.addPathToContext",
-        "title": "Add to write-ai-prompt-better"
+        "title": "Add path reference to write-ai-prompt-better"
       }
     ],
     "menus": {
