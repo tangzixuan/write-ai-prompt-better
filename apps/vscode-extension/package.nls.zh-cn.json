@@ -1,0 +1,16 @@
+{
+  "viewsContainers.activitybar.title": "write-ai-prompt-better",
+  "views.panel.name": "write-ai-prompt-better",
+  "command.openPanel.title": "打开面板",
+  "command.openPanel.category": "write-ai-prompt-better",
+  "command.openEditor.title": "打开编辑器",
+  "command.openEditor.category": "write-ai-prompt-better",
+  "command.clearAll.title": "清空全部",
+  "command.clearAll.category": "write-ai-prompt-better",
+  "command.addSelectedCode.title": "将选中的代码添加到 write-ai-prompt-better",
+  "command.addFileContent.title": "将文件内容添加到 write-ai-prompt-better",
+  "command.addTerminalContent.title": "将终端输出添加到 write-ai-prompt-better",
+  "command.addPathReference.title": "将路径引用添加到 write-ai-prompt-better",
+  "config.title": "write-ai-prompt-better",
+  "config.presets.description": "初始需求预设列表（仅作为种子值——用户界面管理的预设优先使用）。每条记录包含 `label`（下拉菜单中显示的名称）和 `value`（追加到需求文本框中的文本）。"
+}

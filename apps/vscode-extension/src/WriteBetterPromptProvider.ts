@@ -9,21 +9,17 @@ import {
   SkillItem,
   WebviewMessage,
 } from './types';
+import { t, getWebviewMessages, getDefaultPresets, getDefaultValidationPresets, getSkillAgentLabels, getLang } from './i18n';
 
 /** Built-in requirement presets (seed only — overridden by UI-managed presets). */
-const DEFAULT_PRESETS: PresetPrompt[] = [
-  { label: '调整样式', value: '帮我调整样式：' },
-  { label: '排查问题', value: '帮我排查问题：' },
-  { label: '实现功能', value: '帮我实现功能：' },
-  { label: '完善功能', value: '帮我完善功能：' },
-  { label: '代码审查', value: '帮我做代码审查：' },
-  { label: '添加注释', value: '帮我添加注释：' },
-];
+function buildDefaultPresets(): PresetPrompt[] {
+  return getDefaultPresets();
+}
 
 /** Built-in validation presets. */
-const DEFAULT_VALIDATION_PRESETS: PresetPrompt[] = [
-  { label: '项目构建通过', value: '项目构建通过' },
-];
+function buildDefaultValidationPresets(): PresetPrompt[] {
+  return getDefaultValidationPresets();
+}
 
 /** Generate a short unique id shared by the provider and the command layer. */
 export function genId(): string {
@@ -60,6 +56,8 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
   private _history: HistoryItem[] = [];
   private _presets: PresetPrompt[] = [];
   private _validationPresets: PresetPrompt[] = [];
+  /** Cached skill scan results. Lazily populated; force-refreshed on explicit requests. */
+  private _skills: SkillItem[] = [];
 
   private readonly _disposables: vscode.Disposable[] = [];
 
@@ -75,14 +73,14 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
     this._presets = uiPresets ?? this._getSettingsPresets();
 
     const uiValPresets = this._context.globalState.get<PresetPrompt[]>('wbp.validationPresets');
-    this._validationPresets = uiValPresets ?? DEFAULT_VALIDATION_PRESETS.slice();
+    this._validationPresets = uiValPresets ?? buildDefaultValidationPresets();
   }
 
   /** Seed presets from settings.json (only used when no UI-managed presets exist). */
   private _getSettingsPresets(): PresetPrompt[] {
     const config = vscode.workspace.getConfiguration('writeBetterPrompt');
     const presets = config.get<PresetPrompt[]>('presets');
-    return presets && presets.length > 0 ? presets : DEFAULT_PRESETS.slice();
+    return presets && presets.length > 0 ? presets : buildDefaultPresets();
   }
 
   // ---------------------------------------------------------------- view/panel
@@ -158,19 +156,21 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
     }
   }
 
-  /** Send the full current state to a freshly opened view. */
-  private _initWebview(post: PostFn): void {
+  /** Send the full current state (including auto-scanned skills) to a freshly opened view. */
+  private async _initWebview(post: PostFn): Promise<void> {
     post({ type: 'presetsData', presets: this._presets });
     post({ type: 'validationPresetsData', presets: this._validationPresets });
     post({ type: 'historyData', history: this._history });
     post({ type: 'syncContextItems', items: this._contextItems });
+    const skills = await this._scanSkills();
+    post({ type: 'skillsData', skills });
   }
 
   /** Shared message handler used by both the sidebar view and editor panels. */
   private async _handleMessage(message: WebviewMessage, post: PostFn): Promise<void> {
     switch (message.type) {
       case 'ready':
-        this._initWebview(post);
+        await this._initWebview(post);
         break;
 
       case 'copyToClipboard':
@@ -208,7 +208,7 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
         break;
 
       case 'getSkills': {
-        const skills = await this._scanSkills();
+        const skills = await this._scanSkills(/* force */ true);
         post({ type: 'skillsData', skills });
         break;
       }
@@ -219,7 +219,7 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
             const doc = await vscode.workspace.openTextDocument(message.path);
             await vscode.window.showTextDocument(doc);
           } catch {
-            vscode.window.showErrorMessage('无法打开 skill 文件: ' + message.path);
+            vscode.window.showErrorMessage(t('errorOpenSkill', message.path));
           }
         }
         break;
@@ -260,34 +260,37 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
 
   // ---------------------------------------------------------------- skill scan
 
-  /** Discover AI-assistant skills across global and workspace locations. */
-  private async _scanSkills(): Promise<SkillItem[]> {
+  /** Discover AI-assistant skills across global and workspace locations. Results are cached; pass `force` to re-scan. */
+  private async _scanSkills(force = false): Promise<SkillItem[]> {
+    if (!force && this._skills.length > 0) return this._skills;
     const skills: SkillItem[] = [];
     const home = os.homedir();
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    const L = getSkillAgentLabels();
 
     // --- global ---
-    await this._scanSkillDirs(path.join(home, '.claude', 'skills'), 'Claude Code · 全局', skills);
-    await this._readSingle(path.join(home, '.claude', 'CLAUDE.md'), 'Claude Code · 全局', 'CLAUDE.md', skills);
-    await this._scanDir(path.join(home, '.cursor', 'rules'), '.mdc', 'Cursor · 全局', skills);
-    await this._readSingle(path.join(home, '.cursorrules'), 'Cursor · 全局', '.cursorrules', skills);
-    this._readCopilotInstructions('Copilot · 全局', skills);
+    await this._scanSkillDirs(path.join(home, '.claude', 'skills'), L.claudeGlobal, skills);
+    await this._readSingle(path.join(home, '.claude', 'CLAUDE.md'), L.claudeGlobal, 'CLAUDE.md', skills);
+    await this._scanDir(path.join(home, '.cursor', 'rules'), '.mdc', L.cursorGlobal, skills);
+    await this._readSingle(path.join(home, '.cursorrules'), L.cursorGlobal, '.cursorrules', skills);
+    this._readCopilotInstructions(L.copilotGlobal, skills);
 
     // --- project ---
     if (workspaceRoot) {
-      await this._scanSkillDirs(path.join(workspaceRoot, '.claude', 'skills'), 'Claude Code · 项目', skills);
-      await this._scanDir(path.join(workspaceRoot, '.cursor', 'rules'), '.mdc', 'Cursor · 项目', skills);
-      await this._readSingle(path.join(workspaceRoot, '.cursorrules'), 'Cursor · 项目', '.cursorrules', skills);
-      await this._readSingle(path.join(workspaceRoot, '.clinerules'), 'Cline · 项目', '.clinerules', skills);
-      await this._readSingle(path.join(workspaceRoot, '.windsurfrules'), 'Windsurf · 项目', '.windsurfrules', skills);
+      await this._scanSkillDirs(path.join(workspaceRoot, '.claude', 'skills'), L.claudeProject, skills);
+      await this._scanDir(path.join(workspaceRoot, '.cursor', 'rules'), '.mdc', L.cursorProject, skills);
+      await this._readSingle(path.join(workspaceRoot, '.cursorrules'), L.cursorProject, '.cursorrules', skills);
+      await this._readSingle(path.join(workspaceRoot, '.clinerules'), L.clineProject, '.clinerules', skills);
+      await this._readSingle(path.join(workspaceRoot, '.windsurfrules'), L.windsurfProject, '.windsurfrules', skills);
       await this._readSingle(
         path.join(workspaceRoot, '.github', 'copilot-instructions.md'),
-        'Copilot · 项目',
+        L.copilotProject,
         'copilot-instructions.md',
         skills,
       );
     }
 
+    this._skills = skills;
     return skills;
   }
 
@@ -300,7 +303,8 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
       return;
     }
     for (const [name, type] of entries) {
-      if (type !== vscode.FileType.Directory) {
+      // Use bitwise AND to also match symlinked directories (e.g. Claude Code skill symlinks).
+      if (!(type & vscode.FileType.Directory)) {
         continue;
       }
       await this._readSingle(path.join(dir, name, 'SKILL.md'), agent, name, skills);
@@ -316,7 +320,8 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
       return;
     }
     for (const [name, type] of entries) {
-      if (type !== vscode.FileType.File || !name.endsWith(ext)) {
+      // Use bitwise AND to also match symlinked files.
+      if (!(type & vscode.FileType.File) || !name.endsWith(ext)) {
         continue;
       }
       await this._readSingle(path.join(dir, name), agent, name.slice(0, -ext.length), skills);
@@ -345,9 +350,10 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
       text = raw.join('\n');
     }
     if (text.trim()) {
+      const L = getSkillAgentLabels();
       skills.push({
-        name: 'Copilot Instructions',
-        description: 'VS Code Copilot instructions setting',
+        name: L.copilotInstructionsName,
+        description: L.copilotInstructionsDesc,
         path: '',
         agent,
         content: text,
@@ -387,8 +393,13 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
 
   private _getHtml(webview: vscode.Webview, isEditor: boolean): string {
     const nonce = getNonce();
+    const lang = getLang();
+    // Serialise webview messages as a JS object so the webview JS can
+    // reference localised strings without calling back to the host.
+    const msg = getWebviewMessages();
+    const msgJson = JSON.stringify(msg);
     return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${lang}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
@@ -399,7 +410,7 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
 ${this._getBody(isEditor)}
 <div id="toast" class="toast hidden"></div>
 <div id="history-popup" class="history-popup hidden"></div>
-<script nonce="${nonce}">${this._getJs()}</script>
+<script nonce="${nonce}">var MSG=${msgJson};${this._getJs()}</script>
 </body>
 </html>`;
   }
@@ -407,40 +418,41 @@ ${this._getBody(isEditor)}
   private _getBody(isEditor: boolean): string {
     const toolbar = isEditor
       ? `<div class="toolbar editor-toolbar">
-  <div class="editor-title">✍ write-ai-prompt-better <span class="editor-badge">编辑器</span></div>
+  <div class="editor-title">✍ write-ai-prompt-better <span class="editor-badge">${t('editorBadge')}</span></div>
   <div class="editor-actions">
-    <button id="clear-btn" class="btn-danger">清空</button>
-    <button id="split-btn">→ 向右分屏</button>
+    <button id="clear-btn" class="btn-danger">${t('clear')}</button>
+    <button id="split-btn">${t('splitRight')}</button>
   </div>
 </div>`
       : `<div class="toolbar">
-  <button id="clear-btn" class="btn-danger">清空</button>
-  <button id="open-editor-btn">↗ 新窗口编辑</button>
+  <button id="clear-btn" class="btn-danger">${t('clear')}</button>
+  <button id="open-editor-btn">${t('openInWindow')}</button>
 </div>`;
 
     return `<div class="app">
 ${toolbar}
+  <div class="main-content">
   <section class="section">
-    <div class="section-title">📄 背景描述</div>
+    <div class="section-title">${t('sectionBackground')}</div>
     <div id="context-list"></div>
     <div class="manual-wrap">
-      <button id="manual-add-btn" class="link-btn">＋ 手动添加</button>
+      <button id="manual-add-btn" class="link-btn">${t('addManual')}</button>
       <div id="manual-add-form" class="hidden">
-        <textarea id="manual-input" placeholder="输入任意文字（路径、备注、URL…）"></textarea>
+        <textarea id="manual-input" placeholder="${t('manualPlaceholder')}"></textarea>
         <div class="manual-actions">
-          <button id="manual-confirm" class="btn-primary">添加</button>
-          <button id="manual-cancel">取消</button>
+          <button id="manual-confirm" class="btn-primary">${t('addBtn')}</button>
+          <button id="manual-cancel">${t('cancelBtn')}</button>
         </div>
       </div>
     </div>
   </section>
 
   <section class="section">
-    <div class="section-title">📌 按需选择需要的 Skill</div>
+    <div class="section-title">${t('sectionSkills')}</div>
     <div class="skill-picker">
-      <button id="skill-dropdown-btn">添加 Skill… ▾</button>
+      <button id="skill-dropdown-btn">${t('addSkill')}</button>
       <div id="skill-dropdown" class="skill-dropdown hidden">
-        <div class="skill-search"><input id="skill-search" type="text" placeholder="搜索 skill…"></div>
+        <div class="skill-search"><input id="skill-search" type="text" placeholder="${t('searchSkill')}"></div>
         <div id="skill-list"></div>
       </div>
     </div>
@@ -448,43 +460,44 @@ ${toolbar}
   </section>
 
   <section class="section">
-    <div class="section-title">💬 需求描述</div>
+    <div class="section-title">${t('sectionRequirement')}</div>
     <div class="preset-row">
-      <button id="req-preset-btn">选择预设… ▼</button>
+      <button id="req-preset-btn">${t('selectPreset')}</button>
       <div id="req-preset-dropdown" class="preset-dropdown hidden"></div>
-      <button id="req-preset-manage" class="gear-btn" title="管理预设">⚙</button>
+      <button id="req-preset-manage" class="gear-btn" title="${t('managePresets')}">⚙</button>
     </div>
     <div id="req-preset-panel" class="preset-panel hidden"></div>
-    <textarea id="req-textarea" rows="6" placeholder="具体描述你的需求（可选）…"></textarea>
+    <textarea id="req-textarea" rows="6" placeholder="${t('requirementPlaceholder')}"></textarea>
   </section>
 
   <section class="section">
-    <div class="section-title">✅ 验证方法</div>
+    <div class="section-title">${t('sectionValidation')}</div>
     <div class="preset-row">
-      <button id="val-preset-btn">选择预设… ▼</button>
+      <button id="val-preset-btn">${t('selectPreset')}</button>
       <div id="val-preset-dropdown" class="preset-dropdown hidden"></div>
-      <button id="val-preset-manage" class="gear-btn" title="管理预设">⚙</button>
+      <button id="val-preset-manage" class="gear-btn" title="${t('managePresets')}">⚙</button>
     </div>
     <div id="val-preset-panel" class="preset-panel hidden"></div>
-    <textarea id="val-textarea" rows="3" placeholder="描述如何验证修改是否正确…"></textarea>
+    <textarea id="val-textarea" rows="3" placeholder="${t('validationPlaceholder')}"></textarea>
   </section>
 
   <div class="action-bar">
-    <button id="preview-btn">👁 预览</button>
-    <button id="copy-btn" class="btn-primary">📋 复制</button>
+    <button id="preview-btn">${t('previewBtn')}</button>
+    <button id="copy-btn" class="btn-primary">${t('copyBtn')}</button>
   </div>
 
   <div id="preview-wrap" class="preview-wrap hidden">
-    <div class="preview-header">👁 Prompt 预览 <button id="preview-close" class="close-btn">×</button></div>
+    <div class="preview-header">${t('promptPreviewTitle')} <button id="preview-close" class="close-btn">×</button></div>
     <pre id="preview-content"></pre>
   </div>
 
+  </div>
   <section class="section history-section">
     <div id="history-header" class="section-title history-header">
       <span id="history-chevron" class="chevron">›</span>
-      <span>⏱ 历史记录</span>
+      <span>${t('sectionHistory')}</span>
       <span id="history-badge" class="badge">0</span>
-      <button id="history-clear" class="link-btn hidden">清空历史</button>
+      <button id="history-clear" class="link-btn hidden">${t('clearHistory')}</button>
     </div>
     <div id="history-list" class="history-list hidden"></div>
   </section>
@@ -495,10 +508,11 @@ ${toolbar}
     return `*{box-sizing:border-box}
 html,body{height:100%;margin:0;padding:0}
 body{font-family:var(--vscode-font-family,sans-serif);font-size:var(--vscode-font-size,13px);color:var(--vscode-foreground,#333);background-color:var(--vscode-sideBar-background,transparent)}
-.app{display:flex;flex-direction:column;gap:10px;padding:8px 10px 24px;height:100%;overflow-y:auto}
+.app{display:flex;flex-direction:column;gap:6px;padding:0;height:100%}
 .hidden{display:none !important}
-.toolbar{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:8px 10px 0}
 .editor-toolbar{padding-bottom:6px;border-bottom:1px solid var(--vscode-panel-border,rgba(128,128,128,.2))}
+.main-content{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:10px;padding:0 10px 24px}
 .editor-title{font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;overflow:hidden}
 .editor-badge{font-size:10px;font-weight:400;padding:1px 6px;border-radius:8px;background:var(--vscode-badge-background,#4d4d4d);color:var(--vscode-badge-foreground,#fff)}
 .editor-actions{display:flex;gap:6px}
@@ -564,11 +578,11 @@ textarea:focus{border-color:var(--vscode-focusBorder,#007fd4)}
 #req-textarea{min-height:110px}
 #val-textarea{min-height:56px}
 .action-bar{display:flex;gap:6px;justify-content:flex-end;padding-top:4px}
-.preview-wrap{border:1px solid var(--vscode-input-border,rgba(128,128,128,.3));border-radius:4px;overflow:hidden}
-.preview-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--vscode-input-border,rgba(128,128,128,.2));font-size:12px;font-weight:600}
-#preview-content{margin:0;padding:8px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto;color:var(--vscode-descriptionForeground,#aaa)}
+.preview-wrap{border:1px solid var(--vscode-input-border,rgba(128,128,128,.3));border-radius:4px;overflow:hidden;display:flex;flex-direction:column;max-height:300px}
+.preview-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--vscode-input-border,rgba(128,128,128,.2));font-size:12px;font-weight:600;flex-shrink:0}
+#preview-content{margin:0;padding:8px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;white-space:pre-wrap;word-break:break-word;flex:1;overflow:auto;min-height:0;color:var(--vscode-descriptionForeground,#aaa)}
 .close-btn{padding:0 6px;background:transparent;border:none;color:var(--vscode-foreground)}
-.history-section{margin-top:auto}
+.history-section{flex-shrink:0;padding:0 10px 12px}
 .history-header{cursor:pointer;user-select:none;padding:6px 4px;border-top:1px solid var(--vscode-input-border,rgba(128,128,128,.2))}
 .chevron{display:inline-block;transition:transform .15s ease;font-size:12px}
 .chevron.rotated{transform:rotate(90deg)}
@@ -593,6 +607,7 @@ textarea:focus{border-color:var(--vscode-focusBorder,#007fd4)}
     // NOTE: This string is embedded in a TS template literal. The webview JS
     // below intentionally avoids backticks, ${} and backslash escapes so it
     // survives interpolation unchanged. Newlines use NL, backticks use BT.
+    // Localised strings are accessed via the MSG object injected before this script.
     return `(function(){
 var vscode = acquireVsCodeApi();
 var NL = String.fromCharCode(10);
@@ -621,14 +636,15 @@ function showToast(msg){
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(function(){ t.classList.add('hidden'); }, 2200);
 }
+function fmt(s){ var a=arguments; return s.replace(/\\{(\\d+)\\}/g, function(_,i){ return a[+i+1] || ''; }); }
 function relativeTime(ts){
   var diff = Date.now() - ts;
   var m = Math.floor(diff / 60000);
-  if (m < 1) return '刚刚';
-  if (m < 60) return m + '分钟前';
+  if (m < 1) return MSG.timeJustNow;
+  if (m < 60) return fmt(MSG.timeMinutesAgo, m);
   var h = Math.floor(m / 60);
-  if (h < 24) return h + '小时前';
-  return Math.floor(h / 24) + '天前';
+  if (h < 24) return fmt(MSG.timeHoursAgo, h);
+  return fmt(MSG.timeDaysAgo, Math.floor(h / 24));
 }
 
 function buildPrompt(){
@@ -639,10 +655,10 @@ function buildPrompt(){
       var s = state.selectedSkills[i];
       if (s.path) lines.push('- ' + BT + s.path + BT);
     }
-    if (lines.length > 0) parts.push('## 参考使用以下 SKILL' + NL + NL + lines.join(NL));
+    if (lines.length > 0) parts.push(MSG.promptSkillHeader + NL + NL + lines.join(NL));
   }
   if (state.contextItems.length > 0){
-    var body = ['参考以下文件或者文件夹的内容:'];
+    var body = [MSG.promptBackgroundIntro];
     for (var j=0;j<state.contextItems.length;j++){
       var item = state.contextItems[j];
       if (item.type === 'file'){
@@ -664,12 +680,12 @@ function buildPrompt(){
         body.push('📝 ' + item.content);
       }
     }
-    parts.push('## 背景描述' + NL + NL + body.join(NL));
+    parts.push(MSG.promptBackgroundHeader + NL + NL + body.join(NL));
   }
   var req = $('req-textarea').value.trim();
-  if (req) parts.push('## 需求描述' + NL + NL + req);
+  if (req) parts.push(MSG.promptRequirementHeader + NL + NL + req);
   var val = $('val-textarea').value.trim();
-  if (val) parts.push('## 验证方法' + NL + NL + val);
+  if (val) parts.push(MSG.promptValidationHeader + NL + NL + val);
   return parts.join(NL + NL);
 }
 
@@ -685,8 +701,7 @@ function makePreview(prompt){
   return kept.join(' ').slice(0, 100);
 }
 
-function parseSection(prompt, title){
-  var marker = '## ' + title;
+function parseSection(prompt, marker){
   var idx = prompt.indexOf(marker);
   if (idx < 0) return '';
   var rest = prompt.slice(idx + marker.length);
@@ -698,7 +713,7 @@ function parseSection(prompt, title){
 function renderContextList(){
   var box = $('context-list');
   if (state.contextItems.length === 0){
-    box.innerHTML = '<div class="empty">右键编辑器/终端/资源管理器中的内容，或点击「＋ 手动添加」</div>';
+    box.innerHTML = '<div class="empty">' + escapeHtml(MSG.ctxEmptyHint) + '</div>';
     return;
   }
   var html = '';
@@ -711,18 +726,18 @@ function renderContextList(){
     } else if (item.type === 'folder'){ icon='📁'; title=item.filePath; }
     else if (item.type === 'fileRef'){ icon='📄'; title=item.filePath; }
     else if (item.type === 'terminal'){
-      icon='💻'; title='Terminal output';
+      icon='💻'; title=MSG.terminalOutput;
       if (item.content){ hasContent=true; contentHtml='<pre class="card-content">'+escapeHtml(item.content)+'</pre>'; }
     } else if (item.type === 'manual'){
-      icon='📝'; title='Manual note';
+      icon='📝'; title=MSG.manualNote;
       if (item.content){ hasContent=true; contentHtml='<div class="card-content manual-content">'+escapeHtml(item.content)+'</div>'; }
     }
-    var toggleBtn = hasContent ? '<button class="ctx-toggle" title="展开/折叠">▼</button>' : '';
+    var toggleBtn = hasContent ? '<button class="ctx-toggle" title="' + MSG.toggleExpand + '">▼</button>' : '';
     html += '<div class="ctx-card collapsed" data-id="'+escapeHtml(item.id)+'">'+
       '<div class="ctx-card-head">'+
         '<span class="ctx-icon">'+icon+'</span>'+
         '<span class="ctx-title" title="'+escapeHtml(title)+'">'+escapeHtml(title)+'</span>'+
-        '<span class="ctx-actions">'+toggleBtn+'<button class="ctx-remove" title="删除">×</button></span>'+
+        '<span class="ctx-actions">'+toggleBtn+'<button class="ctx-remove" title="' + MSG.removeBtn + '">×</button></span>'+
       '</div>'+contentHtml+'</div>';
   }
   box.innerHTML = html;
@@ -734,11 +749,11 @@ function renderSelectedSkills(){
   var html='';
   for (var i=0;i<state.selectedSkills.length;i++){
     var s = state.selectedSkills[i];
-    var openBtn = s.path ? '<button class="chip-open" data-i="'+i+'" title="打开文件">📂</button>' : '';
+    var openBtn = s.path ? '<button class="chip-open" data-i="'+i+'" title="' + MSG.openFile + '">📂</button>' : '';
     html += '<div class="skill-chip" data-i="'+i+'">'+
       '<span class="chip-agent">'+escapeHtml(s.agent)+'</span>'+
       '<span class="chip-name">'+escapeHtml(s.name)+'</span>'+
-      openBtn+'<button class="chip-remove" data-i="'+i+'" title="移除">×</button></div>';
+      openBtn+'<button class="chip-remove" data-i="'+i+'" title="' + MSG.removeBtn + '">×</button></div>';
   }
   box.innerHTML = html;
 }
@@ -769,13 +784,13 @@ function renderSkillDropdown(){
     var arr = groups[agent];
     for (var k=0;k<arr.length;k++){
       var sk = arr[k];
-      var openBtn = sk.path ? '<button class="skill-item-open" data-path="'+escapeHtml(sk.path)+'" title="打开">📂</button>' : '';
+      var openBtn = sk.path ? '<button class="skill-item-open" data-path="'+escapeHtml(sk.path)+'" title="' + MSG.openFile + '">📂</button>' : '';
       html += '<div class="skill-item" data-name="'+escapeHtml(sk.name)+'" data-agent="'+escapeHtml(sk.agent)+'" data-path="'+escapeHtml(sk.path)+'" data-desc="'+escapeHtml(sk.description || '')+'">'+
         '<div class="skill-item-main"><div class="skill-item-name">'+escapeHtml(sk.name)+'</div>'+
         '<div class="skill-item-desc">'+escapeHtml(sk.description || '')+'</div></div>'+openBtn+'</div>';
     }
   }
-  if (!html) html = '<div class="empty">无匹配 skill</div>';
+  if (!html) html = '<div class="empty">' + escapeHtml(MSG.noMatchingSkill) + '</div>';
   list.innerHTML = html;
 }
 
@@ -784,7 +799,7 @@ function getPresets(which){ return which === 'req' ? state.presets : state.valid
 function renderPresetDropdown(which){
   var dropdown = which === 'req' ? $('req-preset-dropdown') : $('val-preset-dropdown');
   var presets = getPresets(which);
-  if (presets.length === 0){ dropdown.innerHTML='<div class="empty">暂无预设</div>'; return; }
+  if (presets.length === 0){ dropdown.innerHTML='<div class="empty">' + escapeHtml(MSG.noPresets) + '</div>'; return; }
   var html='';
   for (var i=0;i<presets.length;i++){
     html += '<div class="preset-item" data-i="'+i+'">'+escapeHtml(presets[i].label)+'</div>';
@@ -801,21 +816,21 @@ function renderPresetPanel(which){
     var editing = (which === editingWhich && i === editingIndex);
     if (editing){
       html += '<div class="preset-row-item"><div class="preset-edit-form">'+
-        '<input class="pe-label" value="'+escapeHtml(p.label)+'" placeholder="名称">'+
-        '<input class="pe-value" value="'+escapeHtml(p.value)+'" placeholder="内容">'+
-        '<div class="manual-actions"><button class="pe-save btn-primary" data-i="'+i+'">保存</button>'+
-        '<button class="pe-cancel" data-i="'+i+'">取消</button></div></div></div>';
+        '<input class="pe-label" value="'+escapeHtml(p.label)+'" placeholder="' + MSG.nameLabel + '">'+
+        '<input class="pe-value" value="'+escapeHtml(p.value)+'" placeholder="' + MSG.contentLabel + '">'+
+        '<div class="manual-actions"><button class="pe-save btn-primary" data-i="'+i+'">' + MSG.saveBtn + '</button>'+
+        '<button class="pe-cancel" data-i="'+i+'">' + MSG.cancelBtn + '</button></div></div></div>';
     } else {
       html += '<div class="preset-row-item"><div class="preset-row-display">'+
         '<span class="preset-row-label">'+escapeHtml(p.label)+'</span>'+
-        '<button class="pe-edit" data-i="'+i+'" title="编辑">✏</button>'+
-        '<button class="pe-delete" data-i="'+i+'" title="删除">×</button></div></div>';
+        '<button class="pe-edit" data-i="'+i+'" title="' + MSG.editBtn + '">✏</button>'+
+        '<button class="pe-delete" data-i="'+i+'" title="' + MSG.deleteBtn + '">×</button></div></div>';
     }
   }
   html += '<div class="preset-add-form">'+
-    '<input class="pa-label" placeholder="名称">'+
-    '<input class="pa-value" placeholder="内容">'+
-    '<button class="pa-add btn-primary">＋ 添加预设</button></div>';
+    '<input class="pa-label" placeholder="' + MSG.nameLabel + '">'+
+    '<input class="pa-value" placeholder="' + MSG.contentLabel + '">'+
+    '<button class="pa-add btn-primary">' + MSG.addPreset + '</button></div>';
   panel.innerHTML = html;
 }
 
@@ -829,7 +844,7 @@ function renderHistory(){
   $('history-badge').textContent = String(state.history.length);
   var clearBtn = $('history-clear');
   if (state.history.length === 0){
-    list.innerHTML = '<div class="empty">暂无历史记录</div>';
+    list.innerHTML = '<div class="empty">' + escapeHtml(MSG.noHistory) + '</div>';
     if (clearBtn) clearBtn.classList.add('hidden');
     return;
   }
@@ -842,17 +857,17 @@ function renderHistory(){
       '<div class="history-meta">'+
         '<span class="history-time">'+relativeTime(h.timestamp)+'</span>'+
         '<span class="history-item-actions">'+
-          '<button class="history-preview-btn" data-i="'+i+'" title="预览">👁</button>'+
-          '<button class="history-restore" data-i="'+i+'">使用</button>'+
-          '<button class="history-delete" data-i="'+i+'" title="删除">×</button>'+
+          '<button class="history-preview-btn" data-i="'+i+'" title="' + MSG.historyPreview + '">👁</button>'+
+          '<button class="history-restore" data-i="'+i+'">' + MSG.historyRestore + '</button>'+
+          '<button class="history-delete" data-i="'+i+'" title="' + MSG.historyDelete + '">×</button>'+
         '</span></div></div>';
   }
   list.innerHTML = html;
 }
 
-function openPreview(){ previewOpen=true; $('preview-wrap').classList.remove('hidden'); $('preview-btn').textContent='👁 关闭预览'; refreshPreview(); }
-function closePreview(){ previewOpen=false; $('preview-wrap').classList.add('hidden'); $('preview-btn').textContent='👁 预览'; }
-function refreshPreview(){ if (!previewOpen) return; var p = buildPrompt(); $('preview-content').textContent = p || '(空)'; }
+function openPreview(){ previewOpen=true; $('preview-wrap').classList.remove('hidden'); $('preview-btn').textContent=MSG.closePreview; refreshPreview(); setTimeout(function(){ $('preview-wrap').scrollIntoView({behavior:'smooth',block:'nearest'}); }, 60); }
+function closePreview(){ previewOpen=false; $('preview-wrap').classList.add('hidden'); $('preview-btn').textContent=MSG.previewBtn; }
+function refreshPreview(){ if (!previewOpen) return; var p = buildPrompt(); $('preview-content').textContent = p || MSG.emptyPrompt; }
 
 function clearAll(){
   state.contextItems=[]; state.selectedSkills=[];
@@ -868,12 +883,12 @@ function onCopy(){
     return { id:x.id, type:x.type, content:x.content, filePath:x.filePath, lineRange:x.lineRange, timestamp:x.timestamp };
   });
   post({ type:'saveHistory', item: { id: genId(), prompt: prompt, preview: makePreview(prompt), timestamp: Date.now(), contextItems: snapshot } });
-  showToast('✓ Prompt 已复制到剪贴板');
+  showToast(MSG.toastCopied);
 }
 
 function addSkill(name, agent, fp, desc){
   for (var i=0;i<state.selectedSkills.length;i++){
-    if (state.selectedSkills[i].name === name && state.selectedSkills[i].agent === agent){ showToast('⚠ 该 Skill 已选择'); return; }
+    if (state.selectedSkills[i].name === name && state.selectedSkills[i].agent === agent){ showToast(MSG.toastSkillSelected); return; }
   }
   state.selectedSkills.push({ name:name, agent:agent, path:fp, description:desc, content:'' });
   renderSelectedSkills(); refreshPreview();
@@ -894,12 +909,16 @@ function restoreFromHistory(i){
   });
   state.selectedSkills = [];
   renderContextList(); renderSelectedSkills();
-  $('req-textarea').value = parseSection(h.prompt, '需求描述');
-  $('val-textarea').value = parseSection(h.prompt, '验证方法');
+  var req = parseSection(h.prompt, MSG.promptRequirementHeader);
+  if (!req) req = parseSection(h.prompt, MSG.promptRequirementHeaderAlt);
+  $('req-textarea').value = req;
+  var val = parseSection(h.prompt, MSG.promptValidationHeader);
+  if (!val) val = parseSection(h.prompt, MSG.promptValidationHeaderAlt);
+  $('val-textarea').value = val;
   post({ type:'setContextItems', items: state.contextItems });
   toggleHistory(false);
   refreshPreview();
-  showToast('✓ 已从历史恢复');
+  showToast(MSG.toastRestored);
 }
 
 function toggleHistory(open){
@@ -914,7 +933,7 @@ function toggleHistory(open){
 function showHistoryPopup(i, anchor){
   var h = state.history[i];
   var popup = $('history-popup');
-  popup.innerHTML = '<div class="popup-header">完整 Prompt <button class="popup-copy" data-i="'+i+'">📋 复制</button></div>'+
+  popup.innerHTML = '<div class="popup-header">' + escapeHtml(MSG.fullPromptTitle) + ' <button class="popup-copy" data-i="'+i+'">' + MSG.historyCopyBtn + '</button></div>'+
     '<pre class="popup-content">'+escapeHtml(h.prompt)+'</pre>';
   popup.classList.remove('hidden');
   var rect = anchor.getBoundingClientRect();
@@ -957,7 +976,7 @@ function bindPresetSection(which){
       var row = t.closest('.preset-row-item');
       var label = row.querySelector('.pe-label').value.trim();
       var value = row.querySelector('.pe-value').value;
-      if (!label){ showToast('请输入名称'); return; }
+      if (!label){ showToast(MSG.enterName); return; }
       presets[i] = { label:label, value:value };
       editingWhich=null; editingIndex=-1; savePresets(which); renderPresetPanel(which); renderPresetDropdown(which); return;
     }
@@ -965,7 +984,7 @@ function bindPresetSection(which){
     if (hasClass(t, 'pa-add')){
       var alabel = panel.querySelector('.pa-label').value.trim();
       var avalue = panel.querySelector('.pa-value').value;
-      if (!alabel){ showToast('请输入名称'); return; }
+      if (!alabel){ showToast(MSG.enterName); return; }
       presets.push({ label:alabel, value:avalue });
       savePresets(which); renderPresetPanel(which); renderPresetDropdown(which); return;
     }
@@ -1063,7 +1082,7 @@ function init(){
   popup.addEventListener('click', function(e){
     e.stopPropagation();
     var t = e.target;
-    if (hasClass(t, 'popup-copy')){ post({ type:'copyToClipboard', text: state.history[+t.getAttribute('data-i')].prompt }); showToast('✓ 已复制'); }
+    if (hasClass(t, 'popup-copy')){ post({ type:'copyToClipboard', text: state.history[+t.getAttribute('data-i')].prompt }); showToast(MSG.toastCopiedShort); }
   });
 
   window.addEventListener('message', function(event){
