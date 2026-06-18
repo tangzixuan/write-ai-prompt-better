@@ -83,10 +83,30 @@ prompt_interactive() {
 }
 
 # ── Resolve API key ─────────────────────────────────────────
-if ! try_load_env_file; then
-  if ! try_env_var; then
+KEY_SOURCE=""  # "env_file", "env_var", or "interactive"
+if try_load_env_file; then
+  KEY_SOURCE="env_file"
+else
+  if try_env_var; then
+    KEY_SOURCE="env_var"
+  else
     prompt_interactive
+    KEY_SOURCE="interactive"
   fi
+fi
+
+# ── Persist key to .env if it came from the environment ─────
+# When the key is from $DEEPSEEK_API_KEY (e.g. remoteEnv mapping),
+# the .env file still has the placeholder. Write the real key to
+# .env so later steps (source in RC file, apiKeyHelper fallback)
+# get the real key, not the placeholder.
+if [ "$KEY_SOURCE" = "env_var" ]; then
+  if grep -q '^DEEPSEEK_API_KEY=' "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY|" "$ENV_FILE"
+  else
+    echo "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY" >> "$ENV_FILE"
+  fi
+  $QUIET || echo -e "${GREEN}✅ Key persisted to .env${NC}"
 fi
 
 # ── Validate format ─────────────────────────────────────────
@@ -116,7 +136,7 @@ _write_claude_settings() {
       if (fs.existsSync('$SETTINGS_FILE')) {
         try { settings = JSON.parse(fs.readFileSync('$SETTINGS_FILE', 'utf8')); } catch(e) {}
       }
-      settings.apiKeyHelper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"$WORKSPACE_DIR/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\";
+      settings.apiKeyHelper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ] && [ \"\$key\" != \"sk-your-api-key-here\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"$WORKSPACE_DIR/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\";
       settings.permissions = settings.permissions || {};
       settings.permissions.allow = settings.permissions.allow || [];
       var defaults = [
@@ -142,7 +162,7 @@ import json, os
 f = '$SETTINGS_FILE'
 wsp = os.environ.get('_WSP', '')
 # Build apiKeyHelper: sh -c command that reads key from env var or .env file
-helper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"' + wsp + '/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\"
+helper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ] && [ \"\$key\" != \"sk-your-api-key-here\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"' + wsp + '/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\"
 s = {}
 try:
     with open(f) as fh: s = json.load(fh)
@@ -184,6 +204,12 @@ if [ -f "$SHELL_RC" ]; then
   fi
 fi
 
+# ── Source .env to update current session ────────────────────
+# After writing the key to .env, the current shell may still
+# have an old value (e.g. the placeholder from post-start).
+# Source .env now so that 'claude' works immediately.
+source "$ENV_FILE" 2>/dev/null || true
+
 # ── Summary ─────────────────────────────────────────────────
 if ! $QUIET; then
   echo ""
@@ -191,7 +217,12 @@ if ! $QUIET; then
   echo -e "${GREEN}║  ✅ Claude Code + DeepSeek API configured!                   ║${NC}"
   echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
   echo ""
-  echo -e "  API key source: ${CYAN}$ENV_FILE${NC}"
+  # Show the actual source, not always .env
+  case "$KEY_SOURCE" in
+    env_file)  echo -e "  API key source: ${CYAN}$ENV_FILE${NC}" ;;
+    env_var)   echo -e "  API key source: ${CYAN}environment variable → $ENV_FILE${NC}" ;;
+    *)         echo -e "  API key source: ${CYAN}$ENV_FILE${NC}" ;;
+  esac
   echo -e "  Claude config:  ${CYAN}$SETTINGS_FILE${NC}"
   echo ""
   echo -e "  Try it now: ${CYAN}claude${NC}"
