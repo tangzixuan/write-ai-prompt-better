@@ -20,6 +20,8 @@ export interface I18nMessages {
   clear: string;
   splitRight: string;
   openInWindow: string;
+  /** Label on the language-switch button (shows the target language). */
+  langSwitchTo: string;
 
   // ── webview: sections ──
   sectionBackground: string;
@@ -140,6 +142,7 @@ const en: I18nMessages = {
   clear: 'Clear',
   splitRight: '→ Split Right',
   openInWindow: '↗ New Window',
+  langSwitchTo: '中文',
 
   sectionBackground: '📄 Background',
   sectionSkills: '📌 Select Skills',
@@ -246,6 +249,7 @@ const zhCN: I18nMessages = {
   clear: '清空',
   splitRight: '→ 向右分屏',
   openInWindow: '↗ 新窗口编辑',
+  langSwitchTo: 'EN',
 
   sectionBackground: '📄 背景描述',
   sectionSkills: '📌 按需选择需要的 Skill',
@@ -344,10 +348,18 @@ const zhCN: I18nMessages = {
 
 // ── helpers ──
 
-/** Return the active language code. */
+/** Cached language preference; set via setLang() by the provider on startup and on toggle. */
+let _storedLang: 'en' | 'zh-cn' | null = null;
+
+/** Return the active language code. Defaults to English unless the user has switched. */
 export function getLang(): 'en' | 'zh-cn' {
-  const lang = vscode.env.language.toLowerCase();
-  return lang.startsWith('zh') ? 'zh-cn' : 'en';
+  return _storedLang ?? 'en';
+}
+
+/** Update the active language and persist via the supplied callback. */
+export function setLang(lang: 'en' | 'zh-cn', persist?: (lang: 'en' | 'zh-cn') => void): void {
+  _storedLang = lang;
+  persist?.(lang);
 }
 
 /** Look up a translated message, substituting {0}, {1}, … with the provided args. */
