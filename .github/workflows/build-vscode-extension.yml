@@ -41,7 +41,7 @@ jobs:
         run: npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: write-ai-prompt-better-vsix
           path: apps/vscode-extension/*.vsix
