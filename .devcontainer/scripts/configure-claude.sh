@@ -116,7 +116,7 @@ _write_claude_settings() {
       if (fs.existsSync('$SETTINGS_FILE')) {
         try { settings = JSON.parse(fs.readFileSync('$SETTINGS_FILE', 'utf8')); } catch(e) {}
       }
-      settings.apiKeyHelper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"$WORKSPACE_DIR/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\";
+      settings.apiKeyHelper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ] && [ \"\$key\" != \"sk-your-api-key-here\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"$WORKSPACE_DIR/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\";
       settings.permissions = settings.permissions || {};
       settings.permissions.allow = settings.permissions.allow || [];
       var defaults = [
@@ -142,7 +142,7 @@ import json, os
 f = '$SETTINGS_FILE'
 wsp = os.environ.get('_WSP', '')
 # Build apiKeyHelper: sh -c command that reads key from env var or .env file
-helper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"' + wsp + '/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\"
+helper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ] && [ \"\$key\" != \"sk-your-api-key-here\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"' + wsp + '/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\"
 s = {}
 try:
     with open(f) as fh: s = json.load(fh)
@@ -183,6 +183,12 @@ if [ -f "$SHELL_RC" ]; then
     echo "[ -f \"$WORKSPACE_DIR/.env\" ] && source \"$WORKSPACE_DIR/.env\" 2>/dev/null || true" >> "$SHELL_RC"
   fi
 fi
+
+# ── Source .env to update current session ────────────────────
+# After writing the key to .env, the current shell may still
+# have an old value (e.g. the placeholder from post-start).
+# Source .env now so that 'claude' works immediately.
+source "$ENV_FILE" 2>/dev/null || true
 
 # ── Summary ─────────────────────────────────────────────────
 if ! $QUIET; then
