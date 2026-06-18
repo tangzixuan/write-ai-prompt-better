@@ -103,47 +103,68 @@ CLAUDE_CONFIG_DIR="$HOME/.claude"
 mkdir -p "$CLAUDE_CONFIG_DIR"
 SETTINGS_FILE="$CLAUDE_CONFIG_DIR/settings.json"
 
-# Write Claude Code settings.
-# apiKeyHelper reads from .env file so it works in any shell session.
-# Fallback to env var if .env isn't available.
-node -e "
-  const fs = require('fs');
-  const path = require('path');
-  let settings = {};
-
-  if (fs.existsSync('$SETTINGS_FILE')) {
-    try {
-      settings = JSON.parse(fs.readFileSync('$SETTINGS_FILE', 'utf8'));
-    } catch(e) {
-      settings = {};
-    }
-  }
-
-  // apiKeyHelper: reads DEEPSEEK_API_KEY from project .env file
-  // Uses a shell command that works regardless of CWD:
-  // 1. Check \$DEEPSEEK_API_KEY env var (fast path)
-  // 2. Fall back to reading .env from the workspace directory
-  settings.apiKeyHelper = 'sh -c '\"'\"'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"$WORKSPACE_DIR/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi'\"'\"'';
-
-  // Permissions for daily development
-  settings.permissions = settings.permissions || {};
-  settings.permissions.allow = settings.permissions.allow || [];
-  const defaults = [
-    'Bash(pnpm install *)',
-    'Bash(pnpm run *)',
-    'Bash(pnpm --filter *)',
-    'Bash(ls *)',
-    'Bash(cat *)',
-  ];
-  for (const d of defaults) {
-    if (!settings.permissions.allow.includes(d)) {
-      settings.permissions.allow.push(d);
-    }
-  }
-
-  fs.writeFileSync('$SETTINGS_FILE', JSON.stringify(settings, null, 2) + '\n');
-  console.log('✅ Claude Code settings updated: $SETTINGS_FILE');
+# Helper: write Claude Code settings.json using node or python3.
+# apiKeyHelper reads DEEPSEEK_API_KEY from project .env file so it
+# works in any shell session. Falls back to env var if .env missing.
+_write_claude_settings() {
+  if command -v node &>/dev/null; then
+    # Primary: use Node.js (available in the devcontainer image).
+    # The apiKeyHelper is a sh -c command that reads the key from env or .env.
+    node -e "
+      var fs = require('fs');
+      var settings = {};
+      if (fs.existsSync('$SETTINGS_FILE')) {
+        try { settings = JSON.parse(fs.readFileSync('$SETTINGS_FILE', 'utf8')); } catch(e) {}
+      }
+      settings.apiKeyHelper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"$WORKSPACE_DIR/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\";
+      settings.permissions = settings.permissions || {};
+      settings.permissions.allow = settings.permissions.allow || [];
+      var defaults = [
+        'Bash(pnpm install *)',
+        'Bash(pnpm run *)',
+        'Bash(pnpm --filter *)',
+        'Bash(ls *)',
+        'Bash(cat *)',
+      ];
+      for (var i = 0; i < defaults.length; i++) {
+        if (settings.permissions.allow.indexOf(defaults[i]) === -1) {
+          settings.permissions.allow.push(defaults[i]);
+        }
+      }
+      fs.writeFileSync('$SETTINGS_FILE', JSON.stringify(settings, null, 2) + '\n');
+      console.log('✅ Claude Code settings updated: $SETTINGS_FILE');
+    "
+  elif command -v python3 &>/dev/null; then
+    # Fallback: use Python 3 (available on most systems).
+    # Pass workspace dir via env var to avoid nested-quote headaches.
+    _WSP="$WORKSPACE_DIR" python3 -c "
+import json, os
+f = '$SETTINGS_FILE'
+wsp = os.environ.get('_WSP', '')
+# Build apiKeyHelper: sh -c command that reads key from env var or .env file
+helper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"' + wsp + '/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\"
+s = {}
+try:
+    with open(f) as fh: s = json.load(fh)
+except: pass
+s['apiKeyHelper'] = helper
+s.setdefault('permissions', {}).setdefault('allow', [])
+for d in ['Bash(pnpm install *)', 'Bash(pnpm run *)', 'Bash(pnpm --filter *)', 'Bash(ls *)', 'Bash(cat *)']:
+    if d not in s['permissions']['allow']: s['permissions']['allow'].append(d)
+with open(f, 'w') as fh:
+    json.dump(s, fh, indent=2)
+    fh.write('\n')
+print('✅ Claude Code settings updated: ' + f)
 "
+  else
+    echo -e "${RED}❌ Neither node nor python3 found in PATH.${NC}"
+    echo "   The devcontainer may still be initializing — wait for setup to complete,"
+    echo "   then re-run this script."
+    return 1
+  fi
+}
+
+_write_claude_settings
 
 # ── Also write to shell RC for terminal convenience ─────────
 SHELL_RC=""

@@ -56,11 +56,12 @@ jobs:
           TAG="v${VERSION}"
           VSIX=$(ls apps/vscode-extension/*.vsix | head -1)
           if gh release view "$TAG" &>/dev/null; then
-            echo "Release $TAG already exists, uploading asset..."
-            gh release upload "$TAG" "$VSIX" --clobber
-          else
-            echo "Creating release $TAG..."
-            gh release create "$TAG" "$VSIX" \
-              --title "v${VERSION}" \
-              --generate-notes
+            echo "Release $TAG already exists, deleting and recreating..."
+            gh release delete "$TAG" --yes --cleanup-tag
+            # Wait a moment for GitHub to process the deletion
+            sleep 3
           fi
+          echo "Creating release $TAG..."
+          gh release create "$TAG" "$VSIX" \
+            --title "v${VERSION}" \
+            --generate-notes
