@@ -652,10 +652,10 @@ function buildPrompt(){
       var s = state.selectedSkills[i];
       if (s.path) lines.push('- ' + BT + s.path + BT);
     }
-    if (lines.length > 0) parts.push('## 参考使用以下 SKILL' + NL + NL + lines.join(NL));
+    if (lines.length > 0) parts.push(MSG.promptSkillHeader + NL + NL + lines.join(NL));
   }
   if (state.contextItems.length > 0){
-    var body = ['参考以下文件或者文件夹的内容:'];
+    var body = [MSG.promptBackgroundIntro];
     for (var j=0;j<state.contextItems.length;j++){
       var item = state.contextItems[j];
       if (item.type === 'file'){
@@ -677,12 +677,12 @@ function buildPrompt(){
         body.push('📝 ' + item.content);
       }
     }
-    parts.push('## 背景描述' + NL + NL + body.join(NL));
+    parts.push(MSG.promptBackgroundHeader + NL + NL + body.join(NL));
   }
   var req = $('req-textarea').value.trim();
-  if (req) parts.push('## 需求描述' + NL + NL + req);
+  if (req) parts.push(MSG.promptRequirementHeader + NL + NL + req);
   var val = $('val-textarea').value.trim();
-  if (val) parts.push('## 验证方法' + NL + NL + val);
+  if (val) parts.push(MSG.promptValidationHeader + NL + NL + val);
   return parts.join(NL + NL);
 }
 
@@ -698,8 +698,7 @@ function makePreview(prompt){
   return kept.join(' ').slice(0, 100);
 }
 
-function parseSection(prompt, title){
-  var marker = '## ' + title;
+function parseSection(prompt, marker){
   var idx = prompt.indexOf(marker);
   if (idx < 0) return '';
   var rest = prompt.slice(idx + marker.length);
@@ -907,8 +906,12 @@ function restoreFromHistory(i){
   });
   state.selectedSkills = [];
   renderContextList(); renderSelectedSkills();
-  $('req-textarea').value = parseSection(h.prompt, '需求描述');
-  $('val-textarea').value = parseSection(h.prompt, '验证方法');
+  var req = parseSection(h.prompt, MSG.promptRequirementHeader);
+  if (!req) req = parseSection(h.prompt, MSG.promptRequirementHeaderAlt);
+  $('req-textarea').value = req;
+  var val = parseSection(h.prompt, MSG.promptValidationHeader);
+  if (!val) val = parseSection(h.prompt, MSG.promptValidationHeaderAlt);
+  $('val-textarea').value = val;
   post({ type:'setContextItems', items: state.contextItems });
   toggleHistory(false);
   refreshPreview();

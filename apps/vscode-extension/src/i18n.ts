@@ -78,6 +78,17 @@ export interface I18nMessages {
   fullPromptTitle: string;
   historyCopyBtn: string;
 
+  // ── prompt output: section headers & intro text ──
+  promptSkillHeader: string;
+  promptBackgroundHeader: string;
+  promptBackgroundIntro: string;
+  promptRequirementHeader: string;
+  promptValidationHeader: string;
+  /** The *other* language's requirement header (for parsing old history). */
+  promptRequirementHeaderAlt: string;
+  /** The *other* language's validation header (for parsing old history). */
+  promptValidationHeaderAlt: string;
+
   // ── webview: toast ──
   toastCopied: string;
   toastSkillSelected: string;
@@ -190,6 +201,14 @@ const en: I18nMessages = {
   timeHoursAgo: '{0} hours ago',
   timeDaysAgo: '{0} days ago',
 
+  promptSkillHeader: '## Reference the following SKILL',
+  promptBackgroundHeader: '## Background',
+  promptBackgroundIntro: 'Reference the following files or folders:',
+  promptRequirementHeader: '## Requirements',
+  promptValidationHeader: '## Validation',
+  promptRequirementHeaderAlt: '## 需求描述',
+  promptValidationHeaderAlt: '## 验证方法',
+
   presetAdjustStyleLabel: 'Adjust Style',
   presetAdjustStyleValue: 'Help me adjust the style: ',
   presetTroubleshootLabel: 'Troubleshoot',
@@ -287,6 +306,14 @@ const zhCN: I18nMessages = {
   timeMinutesAgo: '{0}分钟前',
   timeHoursAgo: '{0}小时前',
   timeDaysAgo: '{0}天前',
+
+  promptSkillHeader: '## 参考使用以下 SKILL',
+  promptBackgroundHeader: '## 背景描述',
+  promptBackgroundIntro: '参考以下文件或者文件夹的内容:',
+  promptRequirementHeader: '## 需求描述',
+  promptValidationHeader: '## 验证方法',
+  promptRequirementHeaderAlt: '## Requirements',
+  promptValidationHeaderAlt: '## Validation',
 
   presetAdjustStyleLabel: '调整样式',
   presetAdjustStyleValue: '帮我调整样式：',
