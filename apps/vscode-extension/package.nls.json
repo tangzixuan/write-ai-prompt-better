@@ -1,0 +1,16 @@
+{
+  "viewsContainers.activitybar.title": "write-ai-prompt-better",
+  "views.panel.name": "write-ai-prompt-better",
+  "command.openPanel.title": "Open Panel",
+  "command.openPanel.category": "write-ai-prompt-better",
+  "command.openEditor.title": "Open Editor",
+  "command.openEditor.category": "write-ai-prompt-better",
+  "command.clearAll.title": "Clear All",
+  "command.clearAll.category": "write-ai-prompt-better",
+  "command.addSelectedCode.title": "Add selected code to write-ai-prompt-better",
+  "command.addFileContent.title": "Add file content to write-ai-prompt-better",
+  "command.addTerminalContent.title": "Add terminal output to write-ai-prompt-better",
+  "command.addPathReference.title": "Add path reference to write-ai-prompt-better",
+  "config.title": "write-ai-prompt-better",
+  "config.presets.description": "Initial requirement preset list (seed only — UI-managed presets take precedence). Each entry has a `label` (shown in the dropdown) and a `value` (the text appended to the requirements textarea)."
+}

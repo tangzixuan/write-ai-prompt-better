@@ -23,7 +23,7 @@
       "activitybar": [
         {
           "id": "writeBetterPrompt",
-          "title": "write-ai-prompt-better",
+          "title": "%viewsContainers.activitybar.title%",
           "icon": "media/icon.svg"
         }
       ]
@@ -33,7 +33,7 @@
         {
           "type": "webview",
           "id": "writeBetterPrompt.panel",
-          "name": "write-ai-prompt-better",
+          "name": "%views.panel.name%",
           "icon": "media/icon.svg",
           "contextualTitle": "write-ai-prompt-better"
         }
@@ -42,35 +42,35 @@
     "commands": [
       {
         "command": "writeBetterPrompt.openPanel",
-        "title": "Open Panel",
-        "category": "write-ai-prompt-better"
+        "title": "%command.openPanel.title%",
+        "category": "%command.openPanel.category%"
       },
       {
         "command": "writeBetterPrompt.openEditor",
-        "title": "Open Editor",
-        "category": "write-ai-prompt-better"
+        "title": "%command.openEditor.title%",
+        "category": "%command.openEditor.category%"
       },
       {
         "command": "writeBetterPrompt.clearAll",
-        "title": "Clear All",
-        "category": "write-ai-prompt-better"
+        "title": "%command.clearAll.title%",
+        "category": "%command.clearAll.category%"
       },
       {
         "command": "writeBetterPrompt.addFileContent",
-        "title": "Add selected code to write-ai-prompt-better",
+        "title": "%command.addSelectedCode.title%",
         "enablement": "editorHasSelection"
       },
       {
         "command": "writeBetterPrompt.addFileToContext",
-        "title": "Add file content to write-ai-prompt-better"
+        "title": "%command.addFileContent.title%"
       },
       {
         "command": "writeBetterPrompt.addTerminalContent",
-        "title": "Add terminal output to write-ai-prompt-better"
+        "title": "%command.addTerminalContent.title%"
       },
       {
         "command": "writeBetterPrompt.addPathToContext",
-        "title": "Add path reference to write-ai-prompt-better"
+        "title": "%command.addPathReference.title%"
       }
     ],
     "menus": {
@@ -101,19 +101,12 @@
       ]
     },
     "configuration": {
-      "title": "write-ai-prompt-better",
+      "title": "%config.title%",
       "properties": {
         "writeBetterPrompt.presets": {
           "type": "array",
-          "default": [
-            { "label": "调整样式", "value": "帮我调整样式：" },
-            { "label": "排查问题", "value": "帮我排查问题：" },
-            { "label": "实现功能", "value": "帮我实现功能：" },
-            { "label": "完善功能", "value": "帮我完善功能：" },
-            { "label": "代码审查", "value": "帮我做代码审查：" },
-            { "label": "添加注释", "value": "帮我添加注释：" }
-          ],
-          "description": "Initial requirement preset list (seed only — UI-managed presets take precedence). Each entry has a `label` (shown in the dropdown) and a `value` (the text appended to the requirements textarea)."
+          "default": [],
+          "description": "%config.presets.description%"
         }
       }
     }

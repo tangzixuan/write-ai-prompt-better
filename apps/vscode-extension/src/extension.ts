@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { genId, WriteBetterPromptProvider } from './WriteBetterPromptProvider';
 import { ContextItem } from './types';
+import { t } from './i18n';
 
 /**
  * Extension activation entry point. Registers the webview view provider and all
@@ -117,7 +118,7 @@ function addFileToContextHandler(provider: WriteBetterPromptProvider): (resource
       };
       provider.addContextItem(item);
     } catch {
-      vscode.window.showErrorMessage('无法读取文件: ' + targetUri.fsPath);
+      vscode.window.showErrorMessage(t('errorReadFile', targetUri.fsPath));
     }
   };
 }
@@ -160,7 +161,7 @@ function addPathToContextHandler(provider: WriteBetterPromptProvider): (resource
       };
       provider.addContextItem(item);
     } catch {
-      vscode.window.showErrorMessage('无法获取路径信息: ' + uri.fsPath);
+      vscode.window.showErrorMessage(t('errorReadPath', uri.fsPath));
     }
   };
 }
