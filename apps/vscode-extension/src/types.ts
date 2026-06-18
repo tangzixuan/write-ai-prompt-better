@@ -68,7 +68,8 @@ export type WebviewMessage =
   | { type: 'setContextItems'; items: ContextItem[] }
   | { type: 'clearContextItems' }
   | { type: 'openEditorPanel' }
-  | { type: 'openEditorPanelBeside' };
+  | { type: 'openEditorPanelBeside' }
+  | { type: 'changeLanguage'; lang: 'en' | 'zh-cn' };
 
 /** Messages sent from the Extension Host to the Webview UI. */
 export type ExtensionMessage =

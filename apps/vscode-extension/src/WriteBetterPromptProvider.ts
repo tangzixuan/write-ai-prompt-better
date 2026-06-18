@@ -9,7 +9,7 @@ import {
   SkillItem,
   WebviewMessage,
 } from './types';
-import { t, getWebviewMessages, getDefaultPresets, getDefaultValidationPresets, getSkillAgentLabels, getLang } from './i18n';
+import { t, getWebviewMessages, getDefaultPresets, getDefaultValidationPresets, getSkillAgentLabels, getLang, setLang } from './i18n';
 
 /** Built-in requirement presets (seed only — overridden by UI-managed presets). */
 function buildDefaultPresets(): PresetPrompt[] {
@@ -68,6 +68,10 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
   /** Load persisted state. Call once during activation. */
   public async loadState(): Promise<void> {
     this._history = this._context.globalState.get<HistoryItem[]>('wbp.history') ?? [];
+
+    // Restore language preference (defaults to English when not set).
+    const storedLang = this._context.globalState.get<'en' | 'zh-cn'>('wbp.lang');
+    setLang(storedLang ?? 'en');
 
     const uiPresets = this._context.globalState.get<PresetPrompt[]>('wbp.presets');
     this._presets = uiPresets ?? this._getSettingsPresets();
@@ -255,6 +259,19 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
       case 'openEditorPanelBeside':
         this.openEditorPanel(vscode.ViewColumn.Beside);
         break;
+
+      case 'changeLanguage':
+        setLang(message.lang, async (lang) => {
+          await this._context.globalState.update('wbp.lang', lang);
+        });
+        // Refresh every open view so all UI text switches immediately.
+        if (this._view) {
+          this._view.webview.html = this._getHtml(this._view.webview, false);
+        }
+        for (const panel of this._editorPanels) {
+          panel.webview.html = this._getHtml(panel.webview, true);
+        }
+        break;
     }
   }
 
@@ -420,13 +437,17 @@ ${this._getBody(isEditor)}
       ? `<div class="toolbar editor-toolbar">
   <div class="editor-title">✍ write-ai-prompt-better <span class="editor-badge">${t('editorBadge')}</span></div>
   <div class="editor-actions">
+    <button id="lang-switch-btn" class="lang-switch-btn" title="Switch language">${t('langSwitchTo')}</button>
     <button id="clear-btn" class="btn-danger">${t('clear')}</button>
     <button id="split-btn">${t('splitRight')}</button>
   </div>
 </div>`
       : `<div class="toolbar">
   <button id="clear-btn" class="btn-danger">${t('clear')}</button>
-  <button id="open-editor-btn">${t('openInWindow')}</button>
+  <div class="toolbar-actions">
+    <button id="lang-switch-btn" class="lang-switch-btn" title="Switch language">${t('langSwitchTo')}</button>
+    <button id="open-editor-btn">${t('openInWindow')}</button>
+  </div>
 </div>`;
 
     return `<div class="app">
@@ -508,14 +529,16 @@ ${toolbar}
     return `*{box-sizing:border-box}
 html,body{height:100%;margin:0;padding:0}
 body{font-family:var(--vscode-font-family,sans-serif);font-size:var(--vscode-font-size,13px);color:var(--vscode-foreground,#333);background-color:var(--vscode-sideBar-background,transparent)}
-.app{display:flex;flex-direction:column;gap:6px;padding:0;height:100%}
+.app{display:flex;flex-direction:column;gap:6px;padding:0;height:100%;overflow-y:auto}
 .hidden{display:none !important}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:8px 10px 0}
 .editor-toolbar{padding-bottom:6px;border-bottom:1px solid var(--vscode-panel-border,rgba(128,128,128,.2))}
-.main-content{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:10px;padding:0 10px 24px}
+.main-content{display:flex;flex-direction:column;gap:10px;padding:0 10px 24px}
 .editor-title{font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;overflow:hidden}
 .editor-badge{font-size:10px;font-weight:400;padding:1px 6px;border-radius:8px;background:var(--vscode-badge-background,#4d4d4d);color:var(--vscode-badge-foreground,#fff)}
+.toolbar-actions{display:flex;gap:6px;align-items:center}
 .editor-actions{display:flex;gap:6px}
+.lang-switch-btn{font-size:11px;padding:3px 8px;min-width:36px;text-align:center;font-weight:500}
 button{font-family:inherit;font-size:12px;cursor:pointer;border:1px solid var(--vscode-button-border,transparent);border-radius:3px;padding:4px 10px;background:var(--vscode-button-secondaryBackground,#3a3d41);color:var(--vscode-button-secondaryForeground,#fff);white-space:nowrap}
 button:hover{background:var(--vscode-button-secondaryHoverBackground,#45494e)}
 .btn-danger{background:var(--vscode-errorForeground,#f48771);color:#fff;border-color:transparent}
@@ -582,7 +605,7 @@ textarea:focus{border-color:var(--vscode-focusBorder,#007fd4)}
 .preview-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--vscode-input-border,rgba(128,128,128,.2));font-size:12px;font-weight:600;flex-shrink:0}
 #preview-content{margin:0;padding:8px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;white-space:pre-wrap;word-break:break-word;flex:1;overflow:auto;min-height:0;color:var(--vscode-descriptionForeground,#aaa)}
 .close-btn{padding:0 6px;background:transparent;border:none;color:var(--vscode-foreground)}
-.history-section{flex-shrink:0;padding:0 10px 12px}
+.history-section{padding:0 10px 12px}
 .history-header{cursor:pointer;user-select:none;padding:6px 4px;border-top:1px solid var(--vscode-input-border,rgba(128,128,128,.2))}
 .chevron{display:inline-block;transition:transform .15s ease;font-size:12px}
 .chevron.rotated{transform:rotate(90deg)}
@@ -998,6 +1021,12 @@ function init(){
   if (openEditorBtn) openEditorBtn.addEventListener('click', function(){ post({ type:'openEditorPanel' }); });
   var splitBtn = $('split-btn');
   if (splitBtn) splitBtn.addEventListener('click', function(){ post({ type:'openEditorPanelBeside' }); });
+  var langBtn = $('lang-switch-btn');
+  if (langBtn) langBtn.addEventListener('click', function(){
+    var cur = document.documentElement.lang || 'en';
+    var next = (cur === 'zh-cn' || cur === 'zh-CN') ? 'en' : 'zh-cn';
+    post({ type:'changeLanguage', lang: next });
+  });
 
   var manualBtn = $('manual-add-btn');
   var manualForm = $('manual-add-form');
