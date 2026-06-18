@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,15 +17,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
@@ -38,13 +38,29 @@ jobs:
         working-directory: apps/vscode-extension
         # --no-dependencies: the extension has no runtime dependencies, so skip
         #   dependency resolution (avoids issues with pnpm's symlinked node_modules).
-        # --allow-missing-repository: package.json has no `repository` field yet.
         run: npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: write-ai-prompt-better-vsix
           path: apps/vscode-extension/*.vsix
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(jq -r '.version' apps/vscode-extension/package.json)
+          TAG="v${VERSION}"
+          VSIX=$(ls apps/vscode-extension/*.vsix | head -1)
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, uploading asset..."
+            gh release upload "$TAG" "$VSIX" --clobber
+          else
+            echo "Creating release $TAG..."
+            gh release create "$TAG" "$VSIX" \
+              --title "v${VERSION}" \
+              --generate-notes
+          fi
