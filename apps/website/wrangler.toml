@@ -1,25 +1,14 @@
 # Cloudflare Pages configuration
-# Deploy via CLI: pnpm build && wrangler pages deploy dist --project-name=write-ai-prompt-better
-# Or connect Git repo in Cloudflare Dashboard for auto-deploy
-
-# Build configuration (for Git-integrated deploys via Cloudflare Dashboard)
+# Git-integrated deploys via Cloudflare Dashboard: build command / root dir / output dir
+# are configured in the Dashboard UI, not in this file.
 #
-# root_dir: 告诉 Cloudflare Pages 项目在 monorepo 中的位置。
-#   构建命令会在此目录下执行，output_dir 也相对此目录。
+# CLI deploy: pnpm build && wrangler pages deploy dist --project-name=write-ai-prompt-better
 #
-# command: pnpm monorepo 的依赖必须在仓库根目录安装，
-#   所以需要 cd ../.. 回到根目录执行 pnpm install，
-#   再回到 apps/website 执行 pnpm build。
-[build]
-command = "cd ../.. && pnpm install --frozen-lockfile && cd apps/website && pnpm build"
-output_dir = "dist"
-root_dir = "apps/website"
+# This file is used when Cloudflare Pages CI runs `npx wrangler deploy`.
+# It tells Wrangler that this is an assets-only (static site) deployment.
 
-# Node version
-[build.environment]
-NODE_VERSION = "20"
+name = "write-ai-prompt-better"
+compatibility_date = "2026-06-19"
 
-# Deployment
-[deployment]
-# Uncomment to set production branch
-# production_branch = "main"
+[assets]
+directory = "./dist"
