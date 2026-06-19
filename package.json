@@ -12,6 +12,6 @@
     "preview:website": "pnpm --filter @write-ai-prompt-better/website run preview",
     "dev:extension": "pnpm --filter write-ai-prompt-better run dev",
     "build:extension": "pnpm --filter write-ai-prompt-better run build",
-    "install:extension": "pnpm --filter write-ai-prompt-better run install"
+    "install:extension": "pnpm --filter write-ai-prompt-better run package"
   }
 }

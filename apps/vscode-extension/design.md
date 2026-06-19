@@ -502,7 +502,7 @@ pnpm --filter write-ai-prompt-better run watch   # tsc -watch -p ./
 
 ```bash
 # 从 apps/vscode-extension/ 目录
-pnpm run install                    # 执行 scripts/build-and-install.sh（构建 + 打包 + 本地安装）
+pnpm run package                   # 执行 scripts/build-and-install.sh（构建 + 打包 + 本地安装）
 
 # 或手动
 npm install -g @vscode/vsce
