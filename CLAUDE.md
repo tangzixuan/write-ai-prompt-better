@@ -9,7 +9,7 @@
 
 - **Author**: tangzixuan
 - **License**: MIT
-- **Status**: Active development — the VSCode extension is the only functional product; `apps/website` and `packages/*` are scaffolds.
+- **Status**: Active development — the VSCode extension is the core product, and the website is now a functional landing page (React + Vite + Tailwind). `packages/*` remain scaffolds.
 
 ## Repository Structure
 
@@ -23,13 +23,27 @@ write-ai-prompt-better/
 │   │   │   ├── types.ts              # Shared types & message protocol
 │   │   │   └── i18n.ts               # EN / zh-CN translations
 │   │   ├── media/icon.svg
+│   │   ├── scripts/
+│   │   │   └── build-and-install.sh   # One-click build + package + install
 │   │   ├── package.json              # Extension manifest
 │   │   └── tsconfig.json             # CommonJS build (for Extension Host)
-│   └── website/               ← Scaffold (inactive)
+│   └── website/               ← Landing page (active)
+│       ├── src/
+│       │   ├── main.tsx              # React entry point
+│       │   ├── App.tsx               # Root component, assembles all sections
+│       │   ├── index.css             # Tailwind base + custom component layers
+│       │   └── components/           # 7 section components
+│       ├── public/                   # Static assets (_headers, _redirects)
+│       ├── index.html                # HTML entry
+│       ├── vite.config.ts            # Vite configuration
+│       ├── tailwind.config.js        # Tailwind theme (brand colors, fonts, dark mode)
+│       ├── postcss.config.js         # PostCSS configuration
+│       ├── wrangler.toml             # Cloudflare Pages deployment config
+│       └── package.json              # React + Vite + Tailwind dependencies
 ├── packages/
 │   ├── ui/                    ← Scaffold (inactive)
 │   └── utils/                 ← Scaffold (inactive)
-├── design.md                  # Original project brief (Chinese, 1 line)
+├── design.md                  # Original project brief (Chinese)
 ├── tsconfig.base.json         # Shared TS base config (ESM)
 ├── pnpm-workspace.yaml        # Defines apps/* and packages/*
 └── package.json               # Root workspace scripts
@@ -43,7 +57,10 @@ write-ai-prompt-better/
 | Language | TypeScript (strict) | Root/base: ESNext modules; Extension: CommonJS |
 | Extension runtime | VSCode Extension Host (Node.js, API ^1.85.0) | |
 | Extension UI | Inline HTML + CSS + Vanilla JS in a single TS file | **No framework, no bundler.** All UI is a template string in `WriteBetterPromptProvider._getHtml()` |
-| Build | `tsc` directly | `tsc -p ./` outputs to `out/` |
+| Extension build | `tsc` directly | `tsc -p ./` outputs to `out/` |
+| Website framework | React 18 + TypeScript | Functional components, no state management lib |
+| Website styles | Tailwind CSS 3.4 | Dark mode via `class` strategy, custom brand color palette |
+| Website build | Vite 5 | Outputs to `dist/`, deployed to Cloudflare Pages |
 | Storage | `ExtensionContext.globalState` | Keys: `wbp.history`, `wbp.presets`, `wbp.validationPresets`, `wbp.lang` |
 | Security | CSP with nonce | Inline scripts only, no external resources |
 | i18n | Custom module | Two locales: `en` (default) and `zh-cn`; user-preference persisted |
@@ -115,15 +132,31 @@ pnpm build                            # Build all packages
 pnpm dev                              # Watch mode (parallel)
 pnpm typecheck                        # Type-check only, no emit
 
-# VSCode extension specific
+# Convenience scripts (root-level)
+pnpm dev:website                      # Start Vite dev server (localhost:3000)
+pnpm build:website                    # Production build → apps/website/dist/
+pnpm preview:website                  # Preview production build locally
+pnpm dev:extension                    # VSCode extension watch mode (tsc -watch)
+pnpm build:extension                  # Build the VSCode extension
+pnpm install:extension                # Build + package .vsix + install to VSCode
+
+# VSCode extension (manual filter)
 pnpm --filter write-ai-prompt-better run build
 pnpm --filter write-ai-prompt-better run watch
 pnpm --filter write-ai-prompt-better run typecheck
+
+# Website (manual filter)
+pnpm --filter @write-ai-prompt-better/website run dev
+pnpm --filter @write-ai-prompt-better/website run build
 ```
 
 To run/debug the extension: open `apps/vscode-extension/` in VSCode and press **F5** to launch the Extension Development Host.
 
+To develop the website: run `pnpm dev:website` and open `http://localhost:3000`.
+
 ## Key Files Reference
+
+### VSCode Extension
 
 | File | Purpose | When to Edit |
 |------|---------|-------------|
@@ -132,6 +165,23 @@ To run/debug the extension: open `apps/vscode-extension/` in VSCode and press **
 | `apps/vscode-extension/src/types.ts` | `ContextItem`, `SkillItem`, `HistoryItem`, `PresetPrompt`, message types | Adding new message types or fields |
 | `apps/vscode-extension/src/i18n.ts` | All translatable strings for EN and zh-CN + `t()`, `getLang()`, `setLang()` | Adding new UI text |
 | `apps/vscode-extension/package.json` | Extension manifest: commands, menus, views, config | Adding commands, menu items, config keys |
+| `apps/vscode-extension/scripts/build-and-install.sh` | One-click build + package .vsix + `code --install-extension` | N/A (utility script) |
+
+### Website
+
+| File | Purpose | When to Edit |
+|------|---------|-------------|
+| `apps/website/src/App.tsx` | Root component, assembles all sections | Changing page structure / section order |
+| `apps/website/src/components/Hero.tsx` | Main hero section with CTA and code preview | Updating headline, description, CTAs |
+| `apps/website/src/components/WhatIsPrompt.tsx` | 3-step prompt concept cards | Updating educational content |
+| `apps/website/src/components/Resources.tsx` | External learning resource links | Adding/removing resource links |
+| `apps/website/src/components/SkillsSection.tsx` | skills.sh platform introduction | Updating skills.sh content |
+| `apps/website/src/components/ExtensionPromo.tsx` | VSCode extension promotion + install CTA | Updating extension features, install link |
+| `apps/website/src/components/Header.tsx` | Responsive navigation bar | Changing nav items or layout |
+| `apps/website/src/components/Footer.tsx` | Page footer | Updating links or copyright |
+| `apps/website/src/index.css` | Tailwind + global styles + component layers | Adding new utility/component CSS classes |
+| `apps/website/tailwind.config.js` | Brand colors, fonts, dark mode config | Adjusting the design system |
+| `apps/website/wrangler.toml` | Cloudflare Pages deployment config | Changing deploy settings |
 
 ## UI Layout (Sidebar)
 
@@ -198,7 +248,69 @@ To run/debug the extension: open `apps/vscode-extension/` in VSCode and press **
 
 ## Dependencies
 
-The VSCode extension has **zero runtime npm dependencies**. Dev dependencies only:
+### VSCode Extension
+
+**Zero runtime npm dependencies.** Dev dependencies only:
 - `@types/vscode` (^1.85.0)
 - `@types/node` (^20.0.0)
 - `typescript` (^5.7.0)
+
+### Website
+
+Runtime: `react` (^18.3.1), `react-dom` (^18.3.1). Dev dependencies:
+- `@vitejs/plugin-react`, `vite` (^5.4.0) — build
+- `tailwindcss` (^3.4.14), `postcss`, `autoprefixer` — styles
+- `@types/react`, `@types/react-dom`, `typescript` — type checking
+
+## Website Architecture
+
+### Component Tree
+
+```
+App
+├── Header          (sticky, responsive nav with mobile hamburger menu)
+├── Hero            (headline, CTA buttons, code preview window)
+├── WhatIsPrompt    (3 educational cards: What → Why → Structure)
+├── Resources       (3 external link cards to GitHub prompt resources)
+├── SkillsSection   (skills.sh intro + feature cards + CTA)
+├── ExtensionPromo  (6 feature cards + install button)
+└── Footer          (links + copyright)
+```
+
+All components are **stateless functional components** — no global state management is needed. The only `useState` usage is `mobileOpen` in `Header.tsx` for the hamburger menu toggle.
+
+### Design System
+
+- **Colors**: Brand palette (`brand-50` through `brand-950`, centered on blue `#3366ff`), with amber accent for skills.sh section
+- **Dark mode**: `class` strategy, all components use `dark:` variants
+- **Responsive**: Mobile-first with `sm:` (640px), `md:` (768px), `lg:` (1024px) breakpoints
+- **Fonts**: Inter (body/UI), JetBrains Mono (code preview)
+- **Custom CSS layers** in `index.css`: `.gradient-text`, `.card`, `.link`, `.section-container`, `.bg-grid`
+
+### Website Common Tasks
+
+**Adding a new section:**
+1. Create component in `src/components/`
+2. Import and add to `App.tsx`
+3. Add navigation link to `Header.tsx` if needed
+4. Add an `id` to the section for anchor linking
+
+**Changing styles:**
+- Adjust brand colors in `tailwind.config.js` → `colors.brand`
+- Add/update component classes in `src/index.css` → `@layer components`
+- Use Tailwind utility classes directly in JSX for one-off styles
+
+**Changing content:**
+- Resource links: `Resources.tsx` → `RESOURCES` array
+- Extension features: `ExtensionPromo.tsx` → `BENEFITS` array
+- Skills features: `SkillsSection.tsx` → `FEATURES` array
+- Prompt concept steps: `WhatIsPrompt.tsx` → `STEPS` array
+
+### Deployment
+
+The website is deployed to **Cloudflare Pages** (project name: `write-ai-prompt-better`). Config files:
+- `wrangler.toml` — build command, output dir, root dir
+- `public/_headers` — security headers + cache policy
+- `public/_redirects` — SPA fallback routing
+
+See `apps/website/README.md` for full deployment instructions.
