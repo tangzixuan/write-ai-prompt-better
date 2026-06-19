@@ -2,7 +2,7 @@
   "name": "write-ai-prompt-better",
   "displayName": "write-ai-prompt-better",
   "description": "Streamlines prompt writing for Claude Code, GitHub Copilot, Cursor, Cline, Windsurf, and other AI coding assistants.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "tangzixuan",
   "license": "MIT",
   "private": true,

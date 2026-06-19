@@ -58,6 +58,9 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
   private _validationPresets: PresetPrompt[] = [];
   /** Cached skill scan results. Lazily populated; force-refreshed on explicit requests. */
   private _skills: SkillItem[] = [];
+  /** Whether the user has customised presets via the UI (true) or uses defaults/settings.json (false). */
+  private _presetsCustom = false;
+  private _validationPresetsCustom = false;
 
   private readonly _disposables: vscode.Disposable[] = [];
 
@@ -74,10 +77,20 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
     setLang(storedLang ?? 'en');
 
     const uiPresets = this._context.globalState.get<PresetPrompt[]>('wbp.presets');
-    this._presets = uiPresets ?? this._getSettingsPresets();
+    if (uiPresets) {
+      this._presets = uiPresets;
+      this._presetsCustom = true;
+    } else {
+      this._presets = this._getSettingsPresets();
+    }
 
     const uiValPresets = this._context.globalState.get<PresetPrompt[]>('wbp.validationPresets');
-    this._validationPresets = uiValPresets ?? buildDefaultValidationPresets();
+    if (uiValPresets) {
+      this._validationPresets = uiValPresets;
+      this._validationPresetsCustom = true;
+    } else {
+      this._validationPresets = buildDefaultValidationPresets();
+    }
   }
 
   /** Seed presets from settings.json (only used when no UI-managed presets exist). */
@@ -201,12 +214,14 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
 
       case 'savePresets':
         this._presets = message.presets;
+        this._presetsCustom = true;
         await this._context.globalState.update('wbp.presets', this._presets);
         this._broadcast({ type: 'presetsData', presets: this._presets });
         break;
 
       case 'saveValidationPresets':
         this._validationPresets = message.presets;
+        this._validationPresetsCustom = true;
         await this._context.globalState.update('wbp.validationPresets', this._validationPresets);
         this._broadcast({ type: 'validationPresetsData', presets: this._validationPresets });
         break;
@@ -264,6 +279,13 @@ export class WriteBetterPromptProvider implements vscode.WebviewViewProvider, vs
         setLang(message.lang, async (lang) => {
           await this._context.globalState.update('wbp.lang', lang);
         });
+        // Regenerate default presets for the new language (skip user-customised ones).
+        if (!this._presetsCustom) {
+          this._presets = this._getSettingsPresets();
+        }
+        if (!this._validationPresetsCustom) {
+          this._validationPresets = buildDefaultValidationPresets();
+        }
         // Refresh every open view so all UI text switches immediately.
         if (this._view) {
           this._view.webview.html = this._getHtml(this._view.webview, false);
@@ -562,6 +584,10 @@ button:hover{background:var(--vscode-button-secondaryHoverBackground,#45494e)}
 .card-content{margin:0;padding:6px 8px;border-top:1px solid var(--vscode-input-border,rgba(128,128,128,.2));font-family:var(--vscode-editor-font-family,monospace);font-size:11px;color:var(--vscode-descriptionForeground,#aaa);white-space:pre-wrap;word-break:break-word;max-height:90px;overflow:auto}
 .manual-content{font-family:var(--vscode-font-family,sans-serif)}
 .ctx-card.collapsed .card-content{display:none}
+.ctx-edit-form{padding:6px 8px;border-top:1px solid var(--vscode-input-border,rgba(128,128,128,.2));display:flex;flex-direction:column;gap:4px}
+.ctx-edit-textarea{width:100%;min-height:60px;resize:vertical;padding:4px 6px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);border-radius:3px}
+.ctx-edit-input{width:100%;padding:4px 6px;font-family:var(--vscode-editor-font-family,monospace);font-size:11px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);border-radius:3px}
+.ctx-edit-actions{display:flex;gap:4px}
 .manual-wrap{display:flex;flex-direction:column;gap:6px}
 .manual-actions{display:flex;gap:6px}
 #manual-input{width:100%;min-height:50px;resize:vertical;padding:6px;font-family:inherit;font-size:12px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);border-radius:3px}
@@ -640,6 +666,7 @@ var FENCE = BT + BT + BT;
 var state = { contextItems: [], presets: [], validationPresets: [], history: [], skills: [], selectedSkills: [] };
 var editingWhich = null;
 var editingIndex = -1;
+var ctxEditingId = null;
 var previewOpen = false;
 var historyOpen = false;
 var toastTimer = null;
@@ -756,12 +783,22 @@ function renderContextList(){
       if (item.content){ hasContent=true; contentHtml='<div class="card-content manual-content">'+escapeHtml(item.content)+'</div>'; }
     }
     var toggleBtn = hasContent ? '<button class="ctx-toggle" title="' + MSG.toggleExpand + '">▼</button>' : '';
-    html += '<div class="ctx-card collapsed" data-id="'+escapeHtml(item.id)+'">'+
+    var isEditing = (ctxEditingId === item.id);
+    var editContent = '';
+    if (isEditing && item.type === 'manual'){
+      editContent = '<div class="ctx-edit-form">'+
+        '<textarea class="ctx-edit-textarea" rows="4">'+escapeHtml(item.content)+'</textarea>'+
+        '<div class="ctx-edit-actions">'+
+        '<button class="ctx-edit-save btn-primary">' + MSG.saveBtn + '</button>'+
+        '<button class="ctx-edit-cancel">' + MSG.cancelBtn + '</button></div></div>';
+    }
+    var editBtn = (item.type === 'manual' ? '<button class="ctx-edit" title="' + MSG.editBtn + '">✏</button>' : '');
+    html += '<div class="ctx-card' + (isEditing ? '' : ' collapsed') + '" data-id="'+escapeHtml(item.id)+'">'+
       '<div class="ctx-card-head">'+
         '<span class="ctx-icon">'+icon+'</span>'+
         '<span class="ctx-title" title="'+escapeHtml(title)+'">'+escapeHtml(title)+'</span>'+
-        '<span class="ctx-actions">'+toggleBtn+'<button class="ctx-remove" title="' + MSG.removeBtn + '">×</button></span>'+
-      '</div>'+contentHtml+'</div>';
+        '<span class="ctx-actions">'+toggleBtn+editBtn+'<button class="ctx-remove" title="' + MSG.removeBtn + '">×</button></span>'+
+      '</div>'+ (isEditing ? editContent : contentHtml) +'</div>';
   }
   box.innerHTML = html;
 }
@@ -894,6 +931,7 @@ function refreshPreview(){ if (!previewOpen) return; var p = buildPrompt(); $('p
 
 function clearAll(){
   state.contextItems=[]; state.selectedSkills=[];
+  ctxEditingId=null;
   $('req-textarea').value=''; $('val-textarea').value='';
   closePreview(); renderContextList(); renderSelectedSkills();
   post({ type:'clearContextItems' });
@@ -1052,6 +1090,27 @@ function init(){
     var id = card.getAttribute('data-id');
     if (hasClass(t, 'ctx-remove')){ post({ type:'removeContextItem', id: id }); return; }
     if (hasClass(t, 'ctx-toggle')){ card.classList.toggle('collapsed'); t.classList.toggle('rotated'); return; }
+    if (hasClass(t, 'ctx-edit')){ ctxEditingId=id; renderContextList(); return; }
+    if (hasClass(t, 'ctx-edit-cancel')){ ctxEditingId=null; renderContextList(); return; }
+    if (hasClass(t, 'ctx-edit-save')){
+      var textarea = t.closest('.ctx-edit-form').querySelector('.ctx-edit-textarea');
+      for (var j=0;j<state.contextItems.length;j++){
+        if (state.contextItems[j].id === id){ state.contextItems[j].content = textarea.value; break; }
+      }
+      ctxEditingId=null;
+      post({ type:'setContextItems', items: state.contextItems });
+      return;
+    }
+  });
+  $('context-list').addEventListener('keydown', function(e){
+    if (!ctxEditingId) return;
+    if (e.key === 'Enter' && !e.shiftKey && e.target.tagName === 'TEXTAREA'){
+      e.preventDefault();
+      var card = e.target.closest('.ctx-card');
+      if (card){ card.querySelector('.ctx-edit-save').click(); }
+    } else if (e.key === 'Escape'){
+      ctxEditingId=null; renderContextList();
+    }
   });
 
   var skillBtn = $('skill-dropdown-btn');
@@ -1118,7 +1177,7 @@ function init(){
     var msg = event.data;
     switch (msg.type){
       case 'syncContextItems':
-        state.contextItems = msg.items || []; renderContextList(); refreshPreview(); break;
+        ctxEditingId=null; state.contextItems = msg.items || []; renderContextList(); refreshPreview(); break;
       case 'historyData':
         state.history = msg.history || []; renderHistory(); break;
       case 'presetsData':
@@ -1130,7 +1189,7 @@ function init(){
       case 'skillsData':
         state.skills = msg.skills || []; renderSkillDropdown(); break;
       case 'clearAll':
-        state.contextItems=[]; state.selectedSkills=[];
+        ctxEditingId=null; state.contextItems=[]; state.selectedSkills=[];
         $('req-textarea').value=''; $('val-textarea').value='';
         closePreview(); renderContextList(); renderSelectedSkills(); break;
     }
