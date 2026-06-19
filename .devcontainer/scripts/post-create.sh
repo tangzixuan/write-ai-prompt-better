@@ -19,14 +19,17 @@ else
   echo "   Claude Code already installed: $(claude --version 2>/dev/null || echo 'OK')"
 fi
 
-# ── Try auto-config if .env already has a real key ────────────
+# ── Try auto-config if template already has a real token ───────
 WORKSPACE_DIR="$(pwd)"
-if [ -f "$WORKSPACE_DIR/.env" ]; then
-  ENV_KEY=$(grep -E '^DEEPSEEK_API_KEY=' "$WORKSPACE_DIR/.env" 2>/dev/null | cut -d= -f2- | xargs)
-  if [ -n "$ENV_KEY" ] && [ "$ENV_KEY" != "sk-your-api-key-here" ]; then
-    echo "🔑 Valid API key found in .env, auto-configuring Claude Code..."
-    source "$WORKSPACE_DIR/.env" 2>/dev/null || true
-    bash "$WORKSPACE_DIR/.devcontainer/scripts/configure-claude.sh" --quiet
+TEMPLATE="$WORKSPACE_DIR/.devcontainer/.deepseek-claude.json"
+if [ -f "$TEMPLATE" ]; then
+  # Quick check: does ANTHROPIC_AUTH_TOKEN look like a real key?
+  if grep -q '"ANTHROPIC_AUTH_TOKEN"' "$TEMPLATE" 2>/dev/null; then
+    TOKEN=$(grep '"ANTHROPIC_AUTH_TOKEN"' "$TEMPLATE" 2>/dev/null | head -1 | sed 's/.*"ANTHROPIC_AUTH_TOKEN"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    if [ -n "$TOKEN" ] && [ "$TOKEN" != "your-deepseek-api-token" ] && [ "$TOKEN" != "your-api-key-here" ]; then
+      echo "🔑 Valid API token found in .devcontainer/.deepseek-claude.json, auto-configuring Claude Code..."
+      bash "$WORKSPACE_DIR/.devcontainer/scripts/configure-claude.sh" --quiet
+    fi
   fi
 fi
 
@@ -37,8 +40,8 @@ echo "║                                                              ║"
 echo "║  Claude Code CLI is installed and ready to use.              ║"
 echo "║                                                              ║"
 echo "║  📌 To use DeepSeek API with Claude Code:                    ║"
-echo "║     1. Edit .env file in the project root:                   ║"
-echo "║        DEEPSEEK_API_KEY=sk-your-real-key-here                ║"
+echo "║     1. Edit .devcontainer/.deepseek-claude.json              ║"
+echo "║        Set env.ANTHROPIC_AUTH_TOKEN to your real key         ║"
 echo "║     2. Run: bash .devcontainer/scripts/configure-claude.sh   ║"
 echo "║        (or restart the codespace — it auto-configures)       ║"
 echo "║                                                              ║"
