@@ -1,9 +1,10 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────────
-# Configure Claude Code to use DeepSeek API
+# Configure Claude Code from .devcontainer/.deepseek-claude.json
 # ──────────────────────────────────────────────────────────────
-# Reads DEEPSEEK_API_KEY from .env file (priority) or env var,
-# then writes Claude Code settings so the CLI works immediately.
+# Reads settings (env vars, model config, permissions) from
+# .devcontainer/.deepseek-claude.json and writes them to
+# ~/.claude/settings.json so Claude Code works immediately.
 #
 # Usage:
 #   bash .devcontainer/scripts/configure-claude.sh          # interactive
@@ -24,119 +25,138 @@ if [ "$1" = "--quiet" ]; then
 fi
 
 WORKSPACE_DIR="$(pwd)"
-ENV_FILE="$WORKSPACE_DIR/.env"
+TEMPLATE_FILE="$WORKSPACE_DIR/.devcontainer/.deepseek-claude.json"
+CLAUDE_CONFIG_DIR="$HOME/.claude"
+SETTINGS_FILE="$CLAUDE_CONFIG_DIR/settings.json"
 
-# ── Step 1: Try to get API key from .env file first ─────────
-try_load_env_file() {
-  if [ -f "$ENV_FILE" ]; then
-    # Extract value, strip quotes and whitespace
-    local key
-    key=$(grep -E '^DEEPSEEK_API_KEY=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | xargs)
-    # Remove surrounding quotes if present
-    key="${key#\"}"; key="${key%\"}"
-    key="${key#\'}"; key="${key%\'}"
-    if [ -n "$key" ] && [ "$key" != "sk-your-api-key-here" ]; then
-      DEEPSEEK_API_KEY="$key"
-      return 0
-    fi
+# ── Check that the template file exists ──────────────────────
+if [ ! -f "$TEMPLATE_FILE" ]; then
+  echo -e "${RED}❌ Template not found: $TEMPLATE_FILE${NC}"
+  exit 1
+fi
+
+# ── Read token from template (node primary, python3 fallback) ─
+_read_json_field() {
+  local field="$1"
+  if command -v node &>/dev/null; then
+    node -e "
+      var fs = require('fs');
+      var c = JSON.parse(fs.readFileSync('$TEMPLATE_FILE', 'utf8'));
+      var v = (c.env || {})['$field'] || '';
+      process.stdout.write(v);
+    " 2>/dev/null
+  elif command -v python3 &>/dev/null; then
+    python3 -c "
+      import json
+      with open('$TEMPLATE_FILE') as f:
+        c = json.load(f)
+      print(c.get('env', {}).get('$field', ''), end='')
+    " 2>/dev/null
+  else
+    echo ""
   fi
+}
+
+TOKEN=$(_read_json_field "ANTHROPIC_AUTH_TOKEN")
+
+# ── Check if token is a placeholder ──────────────────────────
+is_placeholder() {
+  local t="$1"
+  [ -z "$t" ] && return 0
+  [ "$t" = "your-deepseek-api-token" ] && return 0
+  [ "$t" = "your-api-key-here" ] && return 0
   return 1
 }
 
-# ── Step 2: Check environment variable ──────────────────────
-try_env_var() {
-  if [ -n "$DEEPSEEK_API_KEY" ] && [ "$DEEPSEEK_API_KEY" != "sk-your-api-key-here" ]; then
-    return 0
-  fi
-  return 1
-}
-
-# ── Step 3: Prompt user interactively ───────────────────────
-prompt_interactive() {
+# ── Interactive prompt for token ─────────────────────────────
+if is_placeholder "$TOKEN"; then
   if $QUIET; then
-    echo -e "${YELLOW}⚠️  No valid DEEPSEEK_API_KEY found in .env or environment.${NC}"
-    echo "   Edit .env and set DEEPSEEK_API_KEY=sk-..., then re-run this script."
+    echo -e "${YELLOW}⚠  No valid API token in $TEMPLATE_FILE${NC}"
+    echo "   Edit .devcontainer/.deepseek-claude.json → env.ANTHROPIC_AUTH_TOKEN"
     exit 0
   fi
 
   echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${CYAN}║        Configure Claude Code with DeepSeek API              ║${NC}"
+  echo -e "${CYAN}║      Configure Claude Code with DeepSeek API                ║${NC}"
   echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
   echo ""
   echo -e "  Get your API key at: ${GREEN}https://platform.deepseek.com/api_keys${NC}"
   echo ""
 
-  read -r -p "  Paste your DeepSeek API key (sk-...): " DEEPSEEK_API_KEY
+  read -r -p "  Paste your DeepSeek API key (sk-...): " TOKEN
 
-  if [ -z "$DEEPSEEK_API_KEY" ]; then
+  if [ -z "$TOKEN" ]; then
     echo -e "${RED}❌ No API key provided. Aborting.${NC}"
     exit 1
   fi
 
-  # Write key to .env (replace placeholder)
-  if grep -q '^DEEPSEEK_API_KEY=' "$ENV_FILE" 2>/dev/null; then
-    sed -i "s/^DEEPSEEK_API_KEY=.*/DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY/" "$ENV_FILE"
-  else
-    echo "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY" >> "$ENV_FILE"
-  fi
-  echo -e "${GREEN}✅ Key saved to .env${NC}"
-}
-
-# ── Resolve API key ─────────────────────────────────────────
-KEY_SOURCE=""  # "env_file", "env_var", or "interactive"
-if try_load_env_file; then
-  KEY_SOURCE="env_file"
-else
-  if try_env_var; then
-    KEY_SOURCE="env_var"
-  else
-    prompt_interactive
-    KEY_SOURCE="interactive"
-  fi
-fi
-
-# ── Persist key to .env if it came from the environment ─────
-# When the key is from $DEEPSEEK_API_KEY (e.g. remoteEnv mapping),
-# the .env file still has the placeholder. Write the real key to
-# .env so later steps (source in RC file, apiKeyHelper fallback)
-# get the real key, not the placeholder.
-if [ "$KEY_SOURCE" = "env_var" ]; then
-  if grep -q '^DEEPSEEK_API_KEY=' "$ENV_FILE" 2>/dev/null; then
-    sed -i "s|^DEEPSEEK_API_KEY=.*|DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY|" "$ENV_FILE"
-  else
-    echo "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY" >> "$ENV_FILE"
-  fi
-  $QUIET || echo -e "${GREEN}✅ Key persisted to .env${NC}"
-fi
-
-# ── Validate format ─────────────────────────────────────────
-if ! echo "$DEEPSEEK_API_KEY" | grep -qE '^sk-[a-zA-Z0-9]+'; then
-  echo -e "${YELLOW}⚠️  API key doesn't match expected format (sk-...). Continuing anyway.${NC}"
-fi
-
-# ── Ignore local changes to .env in git ──────────────────────
-# Prevents accidental commits of real API keys.
-git update-index --skip-worktree "$ENV_FILE" 2>/dev/null || true
-
-# ── Configure Claude Code settings ──────────────────────────
-CLAUDE_CONFIG_DIR="$HOME/.claude"
-mkdir -p "$CLAUDE_CONFIG_DIR"
-SETTINGS_FILE="$CLAUDE_CONFIG_DIR/settings.json"
-
-# Helper: write Claude Code settings.json using node or python3.
-# apiKeyHelper reads DEEPSEEK_API_KEY from project .env file so it
-# works in any shell session. Falls back to env var if .env missing.
-_write_claude_settings() {
+  # Write the real token into the template file
   if command -v node &>/dev/null; then
-    # Primary: use Node.js (available in the devcontainer image).
-    # The apiKeyHelper is a sh -c command that reads the key from env or .env.
     node -e "
       var fs = require('fs');
+      var c = JSON.parse(fs.readFileSync('$TEMPLATE_FILE', 'utf8'));
+      c.env = c.env || {};
+      c.env.ANTHROPIC_AUTH_TOKEN = '$TOKEN';
+      fs.writeFileSync('$TEMPLATE_FILE', JSON.stringify(c, null, 2) + '\n');
+    "
+  elif command -v python3 &>/dev/null; then
+    python3 -c "
+      import json
+      with open('$TEMPLATE_FILE') as f:
+        c = json.load(f)
+      c.setdefault('env', {})['ANTHROPIC_AUTH_TOKEN'] = '$TOKEN'
+      with open('$TEMPLATE_FILE', 'w') as f:
+        json.dump(c, f, indent=2)
+        f.write('\n')
+    "
+  fi
+  echo -e "${GREEN}✅ Token saved to $TEMPLATE_FILE${NC}"
+fi
+
+# ── Validate token format ────────────────────────────────────
+if ! echo "$TOKEN" | grep -qE '^sk-[a-zA-Z0-9]+'; then
+  echo -e "${YELLOW}⚠  API token doesn't match expected format (sk-...). Continuing anyway.${NC}"
+fi
+
+# ── Protect template file from accidental git commits ────────
+git update-index --skip-worktree "$TEMPLATE_FILE" 2>/dev/null || true
+
+# ── Write Claude Code settings ───────────────────────────────
+# Merges .deepseek-claude.json into ~/.claude/settings.json:
+#   • env block → settings.env (Claude Code reads ANTHROPIC_AUTH_TOKEN from here)
+#   • Top-level fields (includeCoAuthoredBy, skipDangerousModePermissionPrompt, …)
+#   • Preserves existing permissions and adds safe defaults
+mkdir -p "$CLAUDE_CONFIG_DIR"
+
+_write_settings() {
+  if command -v node &>/dev/null; then
+    node -e "
+      var fs = require('fs');
+
+      // Load template
+      var tmpl = JSON.parse(fs.readFileSync('$TEMPLATE_FILE', 'utf8'));
+
+      // Load existing settings (if any)
       var settings = {};
       if (fs.existsSync('$SETTINGS_FILE')) {
         try { settings = JSON.parse(fs.readFileSync('$SETTINGS_FILE', 'utf8')); } catch(e) {}
       }
-      settings.apiKeyHelper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ] && [ \"\$key\" != \"sk-your-api-key-here\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"$WORKSPACE_DIR/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\";
+
+      // Merge env block — Claude Code reads ANTHROPIC_* vars from settings.env
+      if (tmpl.env) {
+        settings.env = settings.env || {};
+        Object.keys(tmpl.env).forEach(function(k) {
+          settings.env[k] = tmpl.env[k];
+        });
+      }
+
+      // Merge top-level settings from template (skip env + permissions)
+      ['env', 'permissions'].forEach(function(skip) { delete tmpl[skip]; });
+      Object.keys(tmpl).forEach(function(k) {
+        settings[k] = tmpl[k];
+      });
+
+      // Preserve & extend permissions
       settings.permissions = settings.permissions || {};
       settings.permissions.allow = settings.permissions.allow || [];
       var defaults = [
@@ -146,83 +166,75 @@ _write_claude_settings() {
         'Bash(ls *)',
         'Bash(cat *)',
       ];
-      for (var i = 0; i < defaults.length; i++) {
-        if (settings.permissions.allow.indexOf(defaults[i]) === -1) {
-          settings.permissions.allow.push(defaults[i]);
+      defaults.forEach(function(d) {
+        if (settings.permissions.allow.indexOf(d) === -1) {
+          settings.permissions.allow.push(d);
         }
-      }
+      });
+
       fs.writeFileSync('$SETTINGS_FILE', JSON.stringify(settings, null, 2) + '\n');
-      console.log('✅ Claude Code settings updated: $SETTINGS_FILE');
+      console.log('✅ Claude Code settings written to ' + '$SETTINGS_FILE');
     "
   elif command -v python3 &>/dev/null; then
-    # Fallback: use Python 3 (available on most systems).
-    # Pass workspace dir via env var to avoid nested-quote headaches.
-    _WSP="$WORKSPACE_DIR" python3 -c "
-import json, os
-f = '$SETTINGS_FILE'
-wsp = os.environ.get('_WSP', '')
-# Build apiKeyHelper: sh -c command that reads key from env var or .env file
-helper = 'sh -c ' + \"'\" + 'key=\"\$DEEPSEEK_API_KEY\"; if [ -n \"\$key\" ] && [ \"\$key\" != \"sk-your-api-key-here\" ]; then echo \"\$key\"; else grep -E \"^DEEPSEEK_API_KEY=\" \"' + wsp + '/.env\" 2>/dev/null | head -1 | cut -d= -f2- | xargs; fi' + \"'\"
-s = {}
-try:
-    with open(f) as fh: s = json.load(fh)
-except: pass
-s['apiKeyHelper'] = helper
-s.setdefault('permissions', {}).setdefault('allow', [])
-for d in ['Bash(pnpm install *)', 'Bash(pnpm run *)', 'Bash(pnpm --filter *)', 'Bash(ls *)', 'Bash(cat *)']:
-    if d not in s['permissions']['allow']: s['permissions']['allow'].append(d)
-with open(f, 'w') as fh:
-    json.dump(s, fh, indent=2)
-    fh.write('\n')
-print('✅ Claude Code settings updated: ' + f)
-"
+    python3 -c "
+      import json, os
+
+      # Load template
+      with open('$TEMPLATE_FILE') as f:
+        tmpl = json.load(f)
+
+      # Load existing settings
+      settings = {}
+      if os.path.exists('$SETTINGS_FILE'):
+        try:
+          with open('$SETTINGS_FILE') as f:
+            settings = json.load(f)
+        except: pass
+
+      # Merge env block
+      if 'env' in tmpl:
+        settings.setdefault('env', {}).update(tmpl['env'])
+
+      # Merge top-level settings (skip env + permissions)
+      for k, v in tmpl.items():
+        if k not in ('env', 'permissions'):
+          settings[k] = v
+
+      # Preserve & extend permissions
+      settings.setdefault('permissions', {}).setdefault('allow', [])
+      defaults = [
+        'Bash(pnpm install *)',
+        'Bash(pnpm run *)',
+        'Bash(pnpm --filter *)',
+        'Bash(ls *)',
+        'Bash(cat *)',
+      ]
+      for d in defaults:
+        if d not in settings['permissions']['allow']:
+          settings['permissions']['allow'].append(d)
+
+      with open('$SETTINGS_FILE', 'w') as f:
+        json.dump(settings, f, indent=2)
+        f.write('\n')
+      print('✅ Claude Code settings written to ' + '$SETTINGS_FILE')
+    "
   else
     echo -e "${RED}❌ Neither node nor python3 found in PATH.${NC}"
-    echo "   The devcontainer may still be initializing — wait for setup to complete,"
-    echo "   then re-run this script."
+    echo "   Wait for devcontainer setup to complete, then re-run this script."
     return 1
   fi
 }
 
-_write_claude_settings
-
-# ── Also write to shell RC for terminal convenience ─────────
-SHELL_RC=""
-case "$SHELL" in
-  */zsh)  SHELL_RC="$HOME/.zshrc" ;;
-  */bash) SHELL_RC="$HOME/.bashrc" ;;
-  *)      SHELL_RC="$HOME/.profile" ;;
-esac
-
-if [ -f "$SHELL_RC" ]; then
-  sed -i '/^export DEEPSEEK_API_KEY=/d' "$SHELL_RC" 2>/dev/null || true
-  # Source .env in shell RC so the key is available in interactive terminals
-  if ! grep -q 'source.*\.env.*2>/dev/null' "$SHELL_RC" 2>/dev/null; then
-    echo "" >> "$SHELL_RC"
-    echo "# Auto-load .env (added by configure-claude.sh)" >> "$SHELL_RC"
-    echo "[ -f \"$WORKSPACE_DIR/.env\" ] && source \"$WORKSPACE_DIR/.env\" 2>/dev/null || true" >> "$SHELL_RC"
-  fi
-fi
-
-# ── Source .env to update current session ────────────────────
-# After writing the key to .env, the current shell may still
-# have an old value (e.g. the placeholder from post-start).
-# Source .env now so that 'claude' works immediately.
-source "$ENV_FILE" 2>/dev/null || true
+_write_settings
 
 # ── Summary ─────────────────────────────────────────────────
 if ! $QUIET; then
   echo ""
   echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${GREEN}║  ✅ Claude Code + DeepSeek API configured!                   ║${NC}"
+  echo -e "${GREEN}║  ✅ Claude Code configured!                                  ║${NC}"
   echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
   echo ""
-  # Show the actual source, not always .env
-  case "$KEY_SOURCE" in
-    env_file)  echo -e "  API key source: ${CYAN}$ENV_FILE${NC}" ;;
-    env_var)   echo -e "  API key source: ${CYAN}environment variable → $ENV_FILE${NC}" ;;
-    *)         echo -e "  API key source: ${CYAN}$ENV_FILE${NC}" ;;
-  esac
+  echo -e "  Config source:  ${CYAN}$TEMPLATE_FILE${NC}"
   echo -e "  Claude config:  ${CYAN}$SETTINGS_FILE${NC}"
   echo ""
   echo -e "  Try it now: ${CYAN}claude${NC}"

@@ -33,10 +33,6 @@
     "PNPM_HOME": "/home/node/.local/share/pnpm"
   },
 
-  "remoteEnv": {
-    "DEEPSEEK_API_KEY": "${localEnv:DEEPSEEK_API_KEY}"
-  },
-
   "onCreateCommand": "bash .devcontainer/scripts/on-create.sh",
 
   "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",

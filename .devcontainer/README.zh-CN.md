@@ -19,9 +19,9 @@ VSCode 扩展项目的开箱即用开发环境，适用于：
 
 1. 在 **GitHub Codespaces** 中打开此仓库（`<> Code` → Codespaces → Create）
 2. 等待容器构建完成（约 2 分钟）
-3. **编辑 `.env`** — 将占位符替换为你的真实 API key：
-   ```
-   DEEPSEEK_API_KEY=sk-你的真实key
+3. **编辑 `.devcontainer/.deepseek-claude.json`** — 将占位符替换为你的真实 API key：
+   ```json
+   "ANTHROPIC_AUTH_TOKEN": "sk-你的真实key"
    ```
 4. 运行配置脚本：
    ```bash
@@ -31,25 +31,25 @@ VSCode 扩展项目的开箱即用开发环境，适用于：
 
 ## Claude Code + DeepSeek API
 
-API key 存放在项目根目录的 **`.env`** 文件中，Claude Code 直接从文件读取，无需手动 export 环境变量。
+所有配置集中在一个文件：**`.devcontainer/.deepseek-claude.json`**。配置脚本读取该文件，将设置直接写入 `~/.claude/settings.json` —— Claude Code 从中读取 API token 和模型配置，无需 `.env` 文件。
 
 ```
-.env  →  apiKeyHelper  →  Claude Code CLI
+.devcontainer/.deepseek-claude.json  →  ~/.claude/settings.json  →  Claude Code CLI
 ```
 
 ### 配置方式
 
-编辑 `.env`，替换占位符，然后运行：
+编辑 `.devcontainer/.deepseek-claude.json`，将 `env.ANTHROPIC_AUTH_TOKEN` 设置为你的真实 key，然后运行：
 
 ```bash
 bash .devcontainer/scripts/configure-claude.sh
 ```
 
-或者直接运行脚本，按提示输入 key，脚本会自动写入 `.env`。
+或者直接运行脚本，按提示输入 key，脚本会自动写入 JSON 文件。
 
 ### 自动配置
 
-每次 codespace 启动时，`post-start.sh` 会检查 `.env` 中是否有真实 key，有则自动配置 Claude Code。编辑 `.env` 后重启即可，无需手动操作。
+每次 codespace 启动时，`post-start.sh` 会运行 `configure-claude.sh --quiet` 确保 Claude Code 配置是最新的。编辑 `.devcontainer/.deepseek-claude.json` 后重启即可，无需手动操作。
 
 ### 使用 Claude Code
 
@@ -58,21 +58,21 @@ claude                          # 进入交互式会话
 claude -p "重构这个文件"          # 单次对话
 ```
 
-### .env 的 Git 保护
+### Git 保护
 
-`.env` 被 git 追踪（仓库中保留占位符），但你的真实 API key **不应被提交**。devcontainer 脚本会自动执行：
+`.devcontainer/.deepseek-claude.json` 被 git 追踪（仓库中保留占位符），但你的真实 API key **不应被提交**。devcontainer 脚本会自动执行：
 
 ```bash
-git update-index --skip-worktree .env
+git update-index --skip-worktree .devcontainer/.deepseek-claude.json
 ```
 
-这会让 git 忽略 `.env` 的本地修改 —— 不会出现在 `git status` 中，`git add .` 也不会暂存它。如果需要更新仓库中的占位符：
+这会让 git 忽略该文件的本地修改 —— 不会出现在 `git status` 中，`git add .` 也不会暂存它。如果需要更新仓库中的占位符：
 
 ```bash
-git update-index --no-skip-worktree .env   # 恢复追踪
-# 编辑 .env 为新的占位符
-git add .env && git commit -m "..."
-git update-index --skip-worktree .env      # 重新忽略
+git update-index --no-skip-worktree .devcontainer/.deepseek-claude.json   # 恢复追踪
+# 编辑文件为新的占位符
+git add .devcontainer/.deepseek-claude.json && git commit -m "..."
+git update-index --skip-worktree .devcontainer/.deepseek-claude.json      # 重新忽略
 ```
 
 > **获取 API key：** https://platform.deepseek.com/api_keys
@@ -89,12 +89,13 @@ pnpm typecheck         # 仅类型检查
 
 ```
 .devcontainer/
-├── devcontainer.json          # 容器定义
-├── README.md                  # 英文说明
-├── README.zh-CN.md            # 本文件（中文说明）
+├── .deepseek-claude.json       # Claude Code 配置模板（API token + 模型设置）
+├── devcontainer.json           # 容器定义
+├── README.md                   # 英文说明
+├── README.zh-CN.md             # 本文件（中文说明）
 └── scripts/
-    ├── on-create.sh           # 安装 pnpm + 依赖
-    ├── post-create.sh         # 构建项目 + 安装 Claude Code
-    ├── post-start.sh          # 加载 .env，自动配置
-    └── configure-claude.sh    # 将 key 写入 .env + Claude Code 配置
+    ├── on-create.sh            # 安装 pnpm + 依赖
+    ├── post-create.sh          # 构建项目 + 安装 Claude Code
+    ├── post-start.sh           # 启动时自动配置 Claude Code
+    └── configure-claude.sh     # 读取配置模板 → 写入 ~/.claude/settings.json
 ```
