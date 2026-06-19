@@ -117,7 +117,8 @@
     "build": "tsc -p ./",
     "dev": "tsc -watch -p ./",
     "typecheck": "tsc -p ./ --noEmit",
-    "lint": "tsc -p ./ --noEmit"
+    "lint": "tsc -p ./ --noEmit",
+    "install": "bash ./build-and-install.sh"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -6,6 +6,12 @@
     "build": "pnpm -r run build",
     "dev": "pnpm -r --parallel run dev",
     "lint": "pnpm -r run lint",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "dev:website": "pnpm --filter @write-ai-prompt-better/website run dev",
+    "build:website": "pnpm --filter @write-ai-prompt-better/website run build",
+    "preview:website": "pnpm --filter @write-ai-prompt-better/website run preview",
+    "dev:extension": "pnpm --filter write-ai-prompt-better run dev",
+    "build:extension": "pnpm --filter write-ai-prompt-better run build",
+    "install:extension": "pnpm --filter write-ai-prompt-better run install"
   }
 }
