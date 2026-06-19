@@ -17,8 +17,13 @@ npx @vscode/vsce package --no-dependencies
 echo ""
 
 echo "==> 3/3 安装到 VSCode..."
-code --install-extension "$VSIX" --force
-echo ""
-
-echo "✔ 完成！write-ai-prompt-better v${VERSION} 已安装。"
-echo "  请运行 VSCode 的 'Developer: Reload Window' 或重启窗口使插件生效。"
+if command -v code &> /dev/null; then
+  code --install-extension "$VSIX" --force
+  echo ""
+  echo "✔ 完成！write-ai-prompt-better v${VERSION} 已安装。"
+  echo "  请运行 VSCode 的 'Developer: Reload Window' 或重启窗口使插件生效。"
+else
+  echo ""
+  echo "⚠ 跳过安装：未找到 code 命令（可能不在本地开发环境）。"
+  echo "  .vsix 文件: $(pwd)/${VSIX}"
+fi
