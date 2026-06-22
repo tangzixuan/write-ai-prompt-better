@@ -4,6 +4,8 @@
 
 The flagship product is a **VSCode extension** that turns right-clicks in your editor, terminal, and Explorer into structured, copy-ready Markdown prompts — no more manually stitching together file paths, line numbers, and code snippets. The project also includes a marketing landing page for the extension, all managed in a pnpm workspace monorepo.
 
+![Extension preview](preview.png)
+
 ---
 
 ## Repository structure
